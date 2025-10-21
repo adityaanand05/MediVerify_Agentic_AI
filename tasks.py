@@ -21,13 +21,22 @@ search_task = Task(
 
 report_task = Task(
     description=(
-        "Analyze the list of providers found by the Validation Agent. "
-        "Use this validated data to compile a comprehensive data validation report. "
-        "The report must summarize the findings, highlight any discrepancies (if a name was searched and no data was found, or if multiple providers were returned), and list the final, verified NPI, Address, and Specialty."
+        "Generate a structured data validation report based on the validated provider list from the Validation Agent. "
+        "For each provider entry in the input list, the report must clearly state:\n"
+        "  1. The original search query (provider name).\n"
+        "  2. The validation status: 'Verified', 'Not Found', or 'Ambiguous Match'.\n"
+        "  3. If 'Verified': The single, best-match provider's NPI, Address, and Specialty.\n"
+        "  4. If 'Not Found': A note that no matching provider was located in the database.\n"
+        "  5. If 'Ambiguous Match': A list of the multiple potential providers that were returned, including their NPIs for review.\n"
+        "The report should begin with an executive summary quantifying the results (e.g., 'X verified, Y not found, Z ambiguous')."
     ),
-    expected_output='A detailed report summarizing the validation and enrichment findings for the specified healthcare provider, saved to the output file.',
-    tools=[], 
+    expected_output=(
+        "A comprehensive Markdown report titled 'Healthcare Provider Validation Report'. "
+        "The report must be well-structured with clear headings, use bullet points for lists, and be saved to the specified output file. "
+        "The data should be presented in a table for the 'Verified' providers for maximum clarity."
+    ),
+    tools=[npi_search_tool], 
     agent=Reportmaker_agent,
     async_execution=False,
-    output_file='new_report.md'
+    output_file='./reports/new_report.md' 
 )

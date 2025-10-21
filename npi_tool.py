@@ -1,6 +1,6 @@
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
-from typing import Type
+from typing import Type, Optional
 import requests
 
 
@@ -9,7 +9,7 @@ class NPISearchInput(BaseModel):
     first_name: str = Field(..., description="The first name of the healthcare provider.")
     last_name: str = Field(..., description="The last name of the healthcare provider.")
     state: str = Field(..., description="The two-letter state abbreviation (e.g., 'FL', 'NY').")
-    npi_number: str = Field(None, description="Optional: The 10-digit NPI number for direct lookup.")
+    npi_number: Optional[str] = Field(None, description="Optional: The 10-digit NPI number for direct lookup.")
 
 class NPISearchTool(BaseTool):
     name: str = "NPI Registry Search"
@@ -19,7 +19,7 @@ class NPISearchTool(BaseTool):
     )
     args_schema: Type[BaseModel] = NPISearchInput
     
-    def _run(self, first_name: str, last_name: str, state: str, npi_number: str = None) -> str:
+    def _run(self, first_name: str, last_name: str, state: str, npi_number: Optional[str] = None) -> str:
 
         api_url = "https://npiregistry.cms.hhs.gov/api/"
         
