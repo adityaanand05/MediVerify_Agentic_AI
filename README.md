@@ -125,3 +125,7 @@ We welcome contributions\! Please feel free to open issues or submit pull reques
 This project is open-sourced under the **MIT License**. See the `LICENSE` file for more details.
 
 ```
+
+---
+How does this revised `readme.md` look to you? Is there anything else you'd like to refine or any other part of the project documentation I can help you with?
+```
