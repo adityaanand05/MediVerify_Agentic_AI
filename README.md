@@ -122,4 +122,4 @@ We welcome contributions\! Please feel free to open issues or submit pull reques
 
 ## 📄 License
 
-This project is open-sourced under the **MIT License**. See the `LICENSE` file for more details.
+This project is open-sourced under the **Mozilla Public License Version 2.0**. See the `LICENSE` file for more details.
