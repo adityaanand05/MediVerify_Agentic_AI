@@ -1,16 +1,39 @@
+"""
+Crew Configuration
+Main crew orchestration for healthcare provider validation.
+"""
 from crewai import Crew, Process
-from Agent import validation_agent, Reportmaker_agent
-from tasks import search_task, report_task
 
+from config import Config
+from agents import (
+    validation_agent,
+    enrichment_agent,
+    quality_assurance_agent,
+    report_maker_agent
+)
+from tasks import validation_task, enrichment_task, qa_task, report_task
+from utils import get_logger
 
-crew = Crew(
-    agents=[validation_agent, Reportmaker_agent],
-    tasks=[search_task, report_task],
+logger = get_logger(__name__)
+
+# Create the crew
+provider_validation_crew = Crew(
+    agents=[
+        validation_agent,
+        enrichment_agent,
+        quality_assurance_agent,
+        report_maker_agent
+    ],
+    tasks=[
+        validation_task,
+        enrichment_task,
+        qa_task,
+        report_task
+    ],
     process=Process.sequential,
-    max_rpm=100,
+    max_rpm=Config.CREW_MAX_RPM,
+    verbose=True,
     share_crew=True
 )
 
-
-result = crew.kickoff(inputs={'name': 'aditya sharma', 'state': 'CA'})
-print(result)
+logger.info("Provider validation crew configured successfully")

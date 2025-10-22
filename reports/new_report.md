@@ -1,28 +1,27 @@
-# Healthcare Provider Validation Report
+```
+# Provider Validation Report
 
-## Executive Summary
-This report summarizes the validation results for healthcare provider entries.
-- **Verified Providers**: 0
-- **Not Found Providers**: 0
-- **Ambiguous Matches**: 1
+**Date:** 2024-07-29
 
-## Provider Validation Details
+---
 
-### Original Search Query: Aditya Sharma, California
-*   **Validation Status**: Ambiguous Match
-*   **Details**: Multiple potential providers were found for "Aditya Sharma" in California. Please review the options below for clarification:
-    *   **Provider 1**:
-        *   **Name**: Aditya Sharma
-        *   **NPI**: 1700102381
-        *   **Address**: 2500 Alhambra Ave, Martinez, CA 94553
-        *   **Specialty**: Family Medicine
-    *   **Provider 2**:
-        *   **Name**: Aditya Sharma
-        *   **NPI**: 1992154893
-        *   **Address**: 4501 Sand Creek Rd, Brentwood, CA 94513
-        *   **Specialty**: Internal Medicine
-    *   **Provider 3**:
-        *   **Name**: Aditya Sharma
-        *   **NPI**: 1234567890
-        *   **Address**: 789 Oak St, Los Angeles, CA 90001
-        *   **Specialty**: Pediatrics
+## Summary
+
+This report details the outcome of the provider validation process. Due to insufficient information provided, no providers could be successfully validated against the NPI Registry, NABP Pharmacist License Validation, or Propelus License Verification Tool.
+
+---
+
+## Details of Unprocessed Providers
+
+### Provider: jhon
+
+*   **Verification Status:** Not Processed
+*   **Reason:** Missing Last Name. The validation tools require both a first name and a last name to perform an effective search.
+*   **Best-Match Details:** N/A (No search could be initiated)
+
+---
+
+## Recommendations
+
+To proceed with provider validation, please ensure that complete provider information is supplied, including both the first name and last name. Additional details such as state of practice and license numbers are also highly recommended for more accurate and successful verification.
+```
