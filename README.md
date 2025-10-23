@@ -172,7 +172,6 @@ If you’d like to improve MediVerify — be it through bug fixes, new integrati
 
 ---
 
-<<<<<<< HEAD
 ## ✨ Our Contributors !!
 
 Thanks to these wonderful people ✨  
