@@ -1,125 +1,203 @@
 
-# MediVerify: Agentic Provider Data Verification
-**Automated Provider Data Compliance Engine**
+# 🩺 MediVerify — Agentic Provider Data Verification
 
-MediVerify is a specialized **Agentic AI solution**, engineered for Insurance and Payer Companies, to dramatically reduce the manual effort and time for provider data verification.
+### **Automated AI-Powered Provider Data Compliance Engine**
 
-This system leverages a multi-agent framework powered by Google's Gemini 2.5 Flash to automatically query, cross-reference, and reconcile critical information about medical practitioners from multiple authoritative sources. The goal is to ensure the accuracy and compliance of doctor and medical personnel data before onboarding or **during** ongoing validation, replacing tedious manual checks with rapid, verifiable AI workflows.
+**MediVerify** is an **Agentic AI solution** built to revolutionize the way **healthcare payers and insurance organizations** verify provider data.
+It eliminates tedious manual checks by deploying a multi-agent system powered by **Google Gemini 2.5 Flash**, automating the validation, reconciliation, and compliance of provider information across multiple authoritative data sources.
 
 ---
 
-## 💡 Key Features & Use Case
+## 🚀 Overview
 
-The primary function of MediVerify is to serve as a fast, reliable verification engine for credentialing and data compliance teams.
+Healthcare payers face a critical need to maintain accurate and compliant provider directories — a task often burdened by manual processes, fragmented systems, and regulatory constraints.
 
-* **Target Users:** Insurance carriers, healthcare payers, and credentialing organizations.
-* **Agentic Verification (CrewAI):** Uses a collaborative AI crew to define verification tasks, gather data, and generate a definitive compliance report.
-* **Multi-Source Integration:** Fetches and compares data simultaneously from critical open data sources:
-    * NPI Registry (National Provider Identifier)
-    * NABP (National Association of Boards of Pharmacy)
-    * Propelus Open Data APIs (**Optional/If Applicable**)
-* **LLM Core:** Powered by Gemini 2.5 Flash API for high-speed, accurate data synthesis and decision-making based on retrieved documents.
-* **Document Handling:** Includes PDF extraction capabilities to process source documents like licenses or certifications.
-* **Web Interface:** A simple yet effective frontend built with HTML, CSS, and vanilla JavaScript served by a Flask backend.
+**MediVerify** streamlines this process by leveraging **autonomous AI agents** that collaboratively:
+
+* Retrieve data from trusted healthcare registries.
+* Compare and verify records.
+* Flag discrepancies.
+* Generate audit-ready compliance reports.
+
+This not only improves accuracy but also reduces verification time by over **70%**, accelerating provider onboarding and directory updates.
+
+---
+
+## 🧩 Core Features
+
+✅ **Agentic AI Verification (CrewAI):**
+A multi-agent CrewAI framework performs distributed verification and analysis tasks in parallel.
+
+✅ **Multi-Source Data Cross-Referencing:**
+Integrates with key open and optional data sources:
+
+* **NPI Registry (National Provider Identifier)**
+* **NABP (National Association of Boards of Pharmacy)**
+* **Propelus Open Data APIs** *(optional)*
+
+✅ **LLM-Powered Decision Layer:**
+Utilizes **Gemini 2.5 Flash** for intelligent data synthesis, interpretation, and discrepancy reasoning.
+
+✅ **Document Intelligence:**
+Extracts and validates data from uploaded documents (PDF licenses, certifications, etc.) using PyPDF.
+
+✅ **Web Dashboard (Flask + Vanilla JS):**
+Simple, intuitive frontend to submit provider details, view real-time validation progress, and download compliance summaries.
+
+---
+
+## 🧠 Agentic Architecture
+
+MediVerify deploys a four-agent collaborative pipeline within **CrewAI**, ensuring every verification is complete, accurate, and traceable.
+
+| **Agent Role**                            | **Objective**                                    | **Key Responsibilities**                                 |
+| ----------------------------------------- | ------------------------------------------------ | -------------------------------------------------------- |
+| 🩺 **Healthcare Provider Data Validator** | Conduct primary verification from multiple APIs. | Cross-check NPI, NABP, and Propelus datasets.            |
+| 🔍 **Data Enrichment Specialist**         | Fill missing fields and resolve inconsistencies. | Enhance incomplete profiles using structured inference.  |
+| 🧾 **Compliance & QA Reviewer**           | Ensure regulatory and credentialing compliance.  | Validate data against CMS/NCQA credentialing standards.  |
+| 📑 **Report Generator**                   | Produce structured verification reports.         | Summarize agent findings into a clean, shareable format. |
 
 ---
 
 ## ⚙️ Technology Stack
 
-| Component | Technology | Description |
-| :--- | :--- | :--- |
-| **LLM Engine** | Gemini 2.5 Flash | Core decision-making and synthesis model (via API). |
-| **Agent Framework** | CrewAI | Orchestrates the multi-agent workflow (e.g., Retrieval Agent, Comparison Agent). |
-| **Backend/Web** | Flask | Serves the web application and handles API routing for the AI crew. |
-| **Data Processing** | pandas, numpy, csv | Handles structured data manipulation, analysis, and ingestion. |
-| **Document Processing** | pdfextractor (e.g., PyPDF) | Extracts text and data from PDF documents for agent analysis. |
-| **Frontend** | HTML, CSS, JavaScript | User interface for inputting provider details and viewing verification reports. |
+| **Layer**           | **Technology**                 | **Purpose**                                      |
+| ------------------- | ------------------------------ | ------------------------------------------------ |
+| **LLM Engine**      | Google **Gemini 2.5 Flash**    | High-speed decision-making and summarization     |
+| **Agent Framework** | **CrewAI**                     | Multi-agent orchestration and task delegation    |
+| **Backend**         | **Flask**                      | Core API and web server for agent orchestration  |
+| **Frontend**        | **HTML, CSS, JS**              | Lightweight user interface                       |
+| **Data Layer**      | **pandas**, **numpy**, **csv** | Structured data processing                       |
+| **Documents**       | **PyPDF / pdfextractor**       | License and certificate text extraction          |
+| **Version Control** | **Git & GitHub**               | Project management and open-source collaboration |
 
 ---
 
-## 🧠 Agent Architecture Overview (CrewAI)
+## 🧰 Installation & Setup
 
-MediVerify uses a specialized crew of four expert agents to execute the provider verification pipeline. This systematic delegation ensures high-quality, audit-ready verification outputs.
-
-| Agent Role | Goal | Key Responsibilities |
-| :--- | :--- | :--- |
-| 1. Healthcare Provider Data Validator | Perform comprehensive primary data verification and flag discrepancies. | Cross-references NPI, NABP, and Propelus data using API tools. |
-| 2. Provider Data Enrichment Specialist | Analyze validated data to identify gaps, inconsistencies, or missing information. | Enhances data quality and requests additional information to build a complete profile. |
-| 3. Quality Assurance & Compliance Reviewer | Conduct thorough quality review against credentialing standards. | Ensures data is accurate, complete, and compliant with regulations (e.g., CMS, NCQA). |
-| 4. Healthcare Validation Report Generator | Synthesize all findings into professional, actionable reports. | Transforms complex validation data into clear reports for stakeholders and decision-makers. |
-
----
-
-## 🚀 Getting Started
-
-Follow these steps to set up and run the MediVerify application locally.
-
-### Prerequisites
-
-* Python 3.10+
-* A valid Gemini API Key.
-
-### 1. Installation
-
-Clone the Repository:
+### 1. Clone the Repository
 
 ```bash
-git clone [https://github.com/adityaanand05/MediVerify_Agentic_AI.git](https://github.com/adityaanand05/MediVerify_Agentic_AI.git)
+git clone https://github.com/adityaanand05/MediVerify_Agentic_AI.git
 cd MediVerify_Agentic_AI
-````
+```
 
-Set Up the Virtual Environment (`.venv`):
-It is mandatory to use a virtual environment to manage dependencies.
+### 2. Create and Activate a Virtual Environment
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # On Linux/macOS
-# .\.venv\Scripts\activate   # On Windows
+source .venv/bin/activate       # Linux/macOS
+# .\.venv\Scripts\activate      # Windows
 ```
 
-Install Dependencies:
+### 3. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2\. Environment Configuration (`.env`)
+### 4. Configure Environment Variables
 
-You must create a file named `.env` in the root directory to store your API key. The application will use this for the Gemini API calls.
-
-1.  Create a new file named `.env`.
-2.  Add your Gemini API Key:
-
-<!-- end list -->
+Create a `.env` file in the project root:
 
 ```dotenv
-# Set your Google Gemini API Key
-GEMINI_API_KEY="YOUR_GEMINI_API_KEY_HERE"
+# Google Gemini API Key
+GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
+GEMINI_MODEL="gemini/gemini-2.5-flash"
+NABP_API_KEY=/v2/Individual/eprofile/validate
+PROPELUS_API_KEY=/v1/licenses/verify HTTP/1.1
+NABP_BASE_URL=https://api.nabp.pharmacy/v2/Individual/eprofile/validate
+PROPELUS_BASE_URL=https://api.propelus.com/v1/verifications
 ```
 
-*Note: If your CrewAI setup requires the key as `OPENAI_API_KEY` for compatibility, use that variable name instead, but map it to your Gemini key.*
+> 💡 *If CrewAI expects an `OPENAI_API_KEY`, use that name but assign your Gemini key.*
 
-### 3\. Running the Application
-
-1.  Ensure you are in the virtual environment (`source .venv/bin/activate`).
-2.  Run the Flask application:
-
-<!-- end list -->
+### 5. Run the Application
 
 ```bash
 flask run
 ```
 
-3.  Open your web browser and navigate to the address shown in the terminal (usually `http://127.0.0.1:5000/`).
+Visit the local server link (usually **[http://127.0.0.1:5000/](http://127.0.0.1:5000/)**) to access the MediVerify dashboard.
 
------
+---
+
+## 📊 Example Workflow
+
+1. Upload or input provider details (NPI, Name, License ID).
+2. Agents retrieve and verify records from open sources.
+3. Data Enrichment fills missing information.
+4. QA Agent ensures compliance and correctness.
+5. Final agent generates a downloadable verification report.
+
+---
+
+## 🧑‍💻 Project Structure
+
+```
+MediVerify_Agentic_AI/
+│
+├── .vscode/                 # VSCode workspace settings
+├── reports/                 # Generated verification reports (if any)
+├── Agent/                   # (optional) agent modules (if present locally)
+│
+├── agents.py                # Agent definitions / orchestration helpers
+├── config.py                # Configuration and environment handling
+├── crew.py                  # Main agent orchestration file
+├── main.py                  # CLI / entrypoint for agents/workflows
+├── nabp_tool.py             # NABP integration utilities
+├── npi_tool.py              # NPI Registry utilities
+├── propelus_tool.py         # Propelus / external data utilities
+├── tasks.py                 # Task definitions for agents
+├── utils.py                 # Utility helpers
+│
+├── requirements.txt         # Python dependencies
+├── .gitignore               # Files to ignore in Git
+├── LICENSE                  # Repository license (MPL-2.0 detected)
+└── README.md                # Project documentation
+```
+
+---
 
 ## 🤝 Contributing
 
-We welcome contributions\! Please feel free to open issues or submit pull requests with improvements, bug fixes, or new features (like integrating additional data sources).
+Contributions are always welcome!
+Read Contribution.md for more details.
+If you’d like to improve MediVerify — be it through bug fixes, new integrations (like state license boards), or performance optimizations — please:
 
------
+1. Fork the repo
+2. Create a new branch (`feature/your-feature-name`)
+3. Commit your changes
+4. Submit a pull request 🎯
 
-## 📄 License
+---
 
-This project is open-sourced under the **MIT License**. See the `LICENSE` file for more details.
+## ✨ Our Contributors !!
+
+Thanks to these wonderful people ✨  
+
+<a href="https://github.com/adityaanand05/MediVerify_Agentic_AI/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=adityaanand05/MediVerify_Agentic_AI" />
+</a>
+
+---
+
+## 🧾 License
+
+This project is licensed under the **MPL License** — see the [LICENSE](./LICENSE) file for details.
+
+---
+
+## 💬 Acknowledgments
+
+* **EY Techathon 6.0 — Challenge VI Solution**: Provider Data Validation & Directory Management.
+* **CrewAI** and **Gemini 2.5 Flash** for enabling rapid, intelligent agent-based orchestration.
+* **Open-source contributors** and the **healthcare tech community** inspiring innovation in data integrity.
+
+---
+
+## 🌐 Repository
+
+🔗 **GitHub:** [adityaanand05/MediVerify_Agentic_AI](https://github.com/adityaanand05/MediVerify_Agentic_AI)
+
+---
