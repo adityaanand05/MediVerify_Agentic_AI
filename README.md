@@ -201,5 +201,3 @@ This project is licensed under the **MPL License** — see the [LICENSE](./LICEN
 🔗 **GitHub:** [adityaanand05/MediVerify_Agentic_AI](https://github.com/adityaanand05/MediVerify_Agentic_AI)
 
 ---
-This project is open-sourced under the **Mozilla Public License Version 2.0**. See the [LICENSE](./LICENSE) file for more details.
-
