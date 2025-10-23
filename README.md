@@ -172,6 +172,7 @@ If you’d like to improve MediVerify — be it through bug fixes, new integrati
 
 ---
 
+<<<<<<< HEAD
 ## ✨ Our Contributors !!
 
 Thanks to these wonderful people ✨  
@@ -201,3 +202,6 @@ This project is licensed under the **MPL License** — see the [LICENSE](./LICEN
 🔗 **GitHub:** [adityaanand05/MediVerify_Agentic_AI](https://github.com/adityaanand05/MediVerify_Agentic_AI)
 
 ---
+=======
+This project is open-sourced under the **Mozilla Public License Version 2.0**. See the `LICENSE` file for more details.
+>>>>>>> d6393e061de75cc41d7ce75191363569e28352a6
