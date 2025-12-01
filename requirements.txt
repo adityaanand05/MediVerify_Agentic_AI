@@ -17,3 +17,6 @@ python-dotenv>=1.0.0
 
 # Utilities
 pathlib>=1.0.1
+
+
+litellm

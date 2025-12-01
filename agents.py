@@ -19,6 +19,12 @@ llm_gemini = LLM(
     api_key=Config.GEMINI_API_KEY
 )
 
+ollama_llm = LLM(
+    model="ollama/mistral:latest ",
+    base_url="http://localhost:11434",
+    temperature=0.7
+)
+
 # Initialize tools
 npi_tool = NPISearchTool()
 nabp_tool = NABPValidationTool()
@@ -32,21 +38,22 @@ validation_agent = Agent(
     goal=(
         "Perform comprehensive verification of healthcare provider credentials "
         "by cross-referencing NPI registry, NABP pharmacy licenses, and Propelus "
-        "primary source verification data. Identify and flag any discrepancies."
+        "primary source verification data. Identify and flag any discrepancies. "
+        "Provide final results even when some data sources are unavailable."
     ),
     backstory=(
         "You are a meticulous healthcare credentialing specialist with years of "
         "experience verifying provider data. You understand the critical importance "
         "of accurate provider information for patient safety and regulatory compliance. "
-        "You systematically check multiple authoritative sources and never trust a "
-        "single data point until it's been cross-verified. Your attention to detail "
-        "has prevented countless credentialing errors."
+        "You systematically check multiple authoritative sources and know when to "
+        "stop trying a failing tool and document the limitation instead of looping endlessly."
     ),
     tools=[npi_tool, nabp_tool, propelus_tool],
     llm=llm_gemini,
     verbose=True,
     max_rpm=Config.AGENT_MAX_RPM,
-    allow_delegation=False
+    allow_delegation=True,
+
 )
 
 # Enrichment Agent - Data quality enhancement

@@ -94,7 +94,7 @@ def main():
         state = sys.argv[2]
     else:
         # Default example
-        provider_name = "John Doe"
+        provider_name = "Aditya Sharma"
         state = "CA"
         print(f"Usage: python main.py \"Provider Name\" STATE")
         print(f"Using default example: {provider_name} in {state}\n")
