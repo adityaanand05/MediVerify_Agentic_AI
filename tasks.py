@@ -2,8 +2,8 @@
 Task Definitions
 Defines all tasks for the healthcare provider validation workflow.
 """
-from crewai import Task
 
+from crewai import Task
 from config import Config
 from agents import (
     validation_agent,
@@ -22,27 +22,20 @@ Config.REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 validation_task = Task(
     description=(
         "Validate healthcare provider: {provider_name} in state: {state}.\n\n"
-        "Execute the following verification steps:\n"
-        "1. Search NPI Registry for provider's NPI number, specialty, and practice address\n"
-        "2. If pharmacist, validate license through NABP e-Profile system\n"
-        "3. Verify credentials through Propelus Primary Source Verification\n"
-        "4. Cross-reference data across all three sources\n"
-        "5. Identify and document any discrepancies\n\n"
-        "For each source, document:\n"
-        "- Verification status (verified/not found/error)\n"
-        "- Key data points obtained (NPI, license number, specialty, address)\n"
-        "- Any warnings or concerns\n"
-        "- Data quality assessment"
+        "If the provider cannot be found in any verification system, respond only with:\n"
+        "'NO_USER_FOUND'\n\n"
+        "Otherwise perform verification steps:\n"
+        "1. Search NPI Registry\n"
+        "2. If pharmacist, validate NABP\n"
+        "3. Verify credentials through Propelus ONLY IF a valid license number exists and is at least 3 characters long.\n"
+        "   If license number is missing or shorter than 3 characters, skip Propelus verification and continue.\n"
+        "4. Cross-reference all sources\n"
+        "5. Document discrepancies and results\n\n"
+        "IMPORTANT: Never attempt to call Propelus with an empty or invalid license number. Instead state:\n"
+        "'Propelus verification skipped: No valid license number available.'"
     ),
     expected_output=(
-        "Structured validation report containing:\n"
-        "- Provider identification (name, NPI, license numbers)\n"
-        "- Verification status from each source (NPI, NABP, Propelus)\n"
-        "- Complete address and contact information\n"
-        "- Specialty/taxonomy information\n"
-        "- License status and expiration dates\n"
-        "- Any discrepancies or concerns identified\n"
-        "- Data quality score (high/medium/low)"
+        "Structured validation report OR 'NO_USER_FOUND'"
     ),
     agent=validation_agent
 )
@@ -50,28 +43,14 @@ validation_task = Task(
 # Task 2: Data Enrichment
 enrichment_task = Task(
     description=(
-        "Review the validation findings for provider: {provider_name}.\n\n"
-        "Perform data quality analysis:\n"
-        "1. Assess completeness of gathered data\n"
-        "2. Identify any missing critical information\n"
-        "3. Flag inconsistencies between sources\n"
-        "4. Determine if additional verification is needed\n"
-        "5. Provide recommendations for data improvement\n\n"
-        "Focus areas:\n"
-        "- Address consistency across sources\n"
-        "- License expiration status\n"
-        "- Specialty/taxonomy alignment\n"
-        "- Contact information completeness\n"
-        "- Any regulatory concerns"
+        "Review validation findings for provider: {provider_name}.\n"
+        "If result was NO_USER_FOUND, return NO_USER_FOUND.\n"
+        "Otherwise perform enrichment:\n"
+        "1. Assess completeness\n"
+        "2. Identify missing info\n"
+        "3. Flag inconsistencies\n"
     ),
-    expected_output=(
-        "Data enrichment analysis containing:\n"
-        "- Completeness assessment (% of critical fields populated)\n"
-        "- List of missing or incomplete data elements\n"
-        "- Identified discrepancies with severity ratings\n"
-        "- Recommendations for additional verification\n"
-        "- Enhanced data quality score with justification"
-    ),
+    expected_output="Enrichment results OR NO_USER_FOUND",
     agent=enrichment_agent,
     context=[validation_task]
 )
@@ -79,29 +58,10 @@ enrichment_task = Task(
 # Task 3: Quality Assurance Review
 qa_task = Task(
     description=(
-        "Conduct final quality assurance review for provider: {provider_name}.\n\n"
-        "Quality checks to perform:\n"
-        "1. Verify all required data elements are present\n"
-        "2. Confirm consistency across all sources\n"
-        "3. Validate that licenses are current and active\n"
-        "4. Check for any disciplinary actions or sanctions\n"
-        "5. Ensure compliance with credentialing standards\n"
-        "6. Assess overall data reliability\n\n"
-        "Compliance standards:\n"
-        "- CMS Medicare provider directory requirements\n"
-        "- NCQA credentialing standards\n"
-        "- State-specific licensing requirements\n"
-        "- Organizational credentialing policies"
+        "Conduct quality assurance review.\n"
+        "If earlier result equals NO_USER_FOUND, return NO_USER_FOUND.\n"
     ),
-    expected_output=(
-        "Quality assurance report containing:\n"
-        "- Overall quality assessment (Pass/Pass with concerns/Fail)\n"
-        "- Compliance checklist with pass/fail for each requirement\n"
-        "- Critical issues requiring immediate attention\n"
-        "- Non-critical issues for future follow-up\n"
-        "- Final recommendation (Approve/Request additional info/Deny)\n"
-        "- QA reviewer notes and observations"
-    ),
+    expected_output="QA report OR NO_USER_FOUND",
     agent=quality_assurance_agent,
     context=[validation_task, enrichment_task]
 )
@@ -109,43 +69,17 @@ qa_task = Task(
 # Task 4: Report Generation
 report_task = Task(
     description=(
-        "Generate comprehensive provider validation report for: {provider_name}.\n\n"
-        "Report structure:\n"
-        "1. Executive Summary\n"
-        "   - Provider overview\n"
-        "   - Validation status\n"
-        "   - Key findings\n"
-        "   - Recommendation\n\n"
-        "2. Provider Information\n"
-        "   - Demographics\n"
-        "   - NPI and license numbers\n"
-        "   - Practice location(s)\n"
-        "   - Specialty information\n\n"
-        "3. Verification Results\n"
-        "   - NPI Registry findings\n"
-        "   - NABP validation results (if applicable)\n"
-        "   - Propelus verification status\n\n"
-        "4. Data Quality Assessment\n"
-        "   - Completeness score\n"
-        "   - Consistency analysis\n"
-        "   - Identified gaps\n\n"
-        "5. Quality Assurance Review\n"
-        "   - Compliance status\n"
-        "   - Issues and concerns\n"
-        "   - Recommendations\n\n"
-        "6. Appendices\n"
-        "   - Detailed source data\n"
-        "   - Verification timestamps\n"
-        "   - Reviewer information\n\n"
-        "Format: Professional Markdown document"
+        "Generate final provider validation report.\n"
+        "If the input context contains NO_USER_FOUND, return NO_USER_FOUND and do not generate report.\n"
+        "If Propelus verification was skipped due to missing license number, mark it clearly in the report.\n"
+        "Include sections for:\n"
+        "1. Provider Information\n"
+        "2. Overall Validation Status\n"
+        "3. Detailed Validation Findings\n"
+        "4. Compliance Status\n"
+        "5. Recommendations & Required Actions\n"
     ),
-    expected_output=(
-        "Complete provider validation report in Markdown format saved to disk. "
-        "Report must be professional, comprehensive, and suitable for credentialing "
-        "committee review. All sections must be clearly organized with appropriate "
-        "headers, and findings must be presented with supporting evidence from "
-        "verification sources."
-    ),
+    expected_output="Markdown report output OR NO_USER_FOUND",
     agent=report_maker_agent,
     context=[validation_task, enrichment_task, qa_task],
     output_file=str(Config.REPORTS_DIR / "provider_validation_report.md")

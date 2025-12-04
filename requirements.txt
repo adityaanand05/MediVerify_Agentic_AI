@@ -1,7 +1,7 @@
 # Core Framework
 crewai>=0.80.0
 crewai-tools>=0.12.0
-
+crewai[google-genai]
 # LLM Support
 google-generativeai>=0.8.0
 
