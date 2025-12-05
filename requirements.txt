@@ -36,3 +36,6 @@ psycopg2-binary       # for PostgreSQL
 pytest
 pytest-flask
 coverage
+
+
+pypandoc

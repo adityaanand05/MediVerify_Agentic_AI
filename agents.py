@@ -7,7 +7,7 @@ from crewai import Agent, LLM
 from config import Config
 from npi_tool import NPISearchTool
 from nabp_tool import NABPValidationTool
-from propelus_tool import PropelusLicenseVerificationTool
+# from propelus_tool import PropelusLicenseVerificationTool
 from utils import get_logger
 
 logger = get_logger(__name__)
@@ -28,7 +28,7 @@ ollama_llm = LLM(
 # Initialize tools
 npi_tool = NPISearchTool()
 nabp_tool = NABPValidationTool()
-propelus_tool = PropelusLicenseVerificationTool()
+# propelus_tool = PropelusLicenseVerificationTool()
 
 logger.info("Initializing agents...")
 
@@ -48,7 +48,7 @@ validation_agent = Agent(
         "You systematically check multiple authoritative sources and know when to "
         "stop trying a failing tool and document the limitation instead of looping endlessly."
     ),
-    tools=[npi_tool, nabp_tool, propelus_tool],
+    tools=[npi_tool, nabp_tool],
     llm=llm_gemini,
     verbose=True,
     max_rpm=Config.AGENT_MAX_RPM,
