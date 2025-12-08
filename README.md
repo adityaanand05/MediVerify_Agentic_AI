@@ -178,7 +178,7 @@ Thanks to these wonderful people ✨
 
 <a href="https://github.com/adityaanand05/MediVerify_Agentic_AI/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=adityaanand05/MediVerify_Agentic_AI" />
-</a>
+</a> 
 
 ---
 
