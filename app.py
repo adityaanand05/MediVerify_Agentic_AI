@@ -8,6 +8,29 @@ import os
 import requests
 import json
 import re
+import mysql.connector
+import bcrypt
+db = mysql.connector.connect(
+    host="localhost",
+    user="root",
+    password="",      # your MySQL password
+    database="login"
+)
+
+cursor = db.cursor()
+gmail = input("Enter Gmail: ")
+password = input("Enter Password: ")
+
+hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+
+sql = "INSERT INTO user (gmail, password) VALUES (%s, %s)"
+val = (gmail, hashed_password)
+
+cursor.execute(sql, val)
+db.commit()
+
+print(" Data saved in database successfully!")
+
 from werkzeug.utils import secure_filename
 # Import from main.py for AI validation
 from main import validate_provider  # Assumes main.py is in the same directory and dependencies (crew, config, utils) are available
