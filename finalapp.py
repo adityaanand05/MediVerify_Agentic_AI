@@ -1,0 +1,2314 @@
+# Complete app.py with AI integration and all templates
+from flask import Flask, render_template_string, request, jsonify, send_file, session
+import random
+import datetime
+import io
+import csv
+import os
+import requests
+import json
+import re
+from pathlib import Path
+from werkzeug.utils import secure_filename
+import sys
+import time
+# import mysql.connector
+# import bcrypt
+# db = mysql.connector.connect(
+#     host="localhost",
+#     user="root",
+#     password="",      # your MySQL password
+#     database="login"
+# )
+
+# cursor = db.cursor()
+# gmail = input("Enter Gmail: ")
+# password = input("Enter Password: ")
+
+# hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+
+# sql = "INSERT INTO user (gmail, password) VALUES (%s, %s)"
+# val = (gmail, hashed_password)
+
+# cursor.execute(sql, val)
+# db.commit()
+
+# print(" Data saved in database successfully!")
+
+
+# Add the CrewAI modules to the path
+sys.path.append('.')
+
+app = Flask(__name__)
+app.secret_key = 'your-secret-key-12345-change-in-production'
+
+# Create necessary directories
+Path('reports').mkdir(exist_ok=True)
+Path('ai_reports').mkdir(exist_ok=True)
+
+# ==========================================
+# NPI Validation Function (Real NPPES API)
+# ==========================================
+
+def validate_npi_real(npi):
+    """
+    Validate NPI using official NPPES API.
+    Returns dict with 'valid': bool, 'provider': data if valid.
+    """
+    if not re.match(r'^\d{10}$', npi):
+        return {'valid': False, 'error': 'Invalid NPI format'}
+
+    url = f"https://npiregistry.cms.hhs.gov/api/?version=2.1&number={npi}"
+    
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data.get('result_count', 0) == 1:
+            provider = data['results'][0]
+            status = provider.get('basic', {}).get('status', '') == 'A'
+            if status:
+                return {
+                    'valid': True,
+                    'provider': provider
+                }
+            else:
+                return {'valid': False, 'error': 'Inactive provider'}
+        else:
+            return {'valid': False, 'error': 'NPI not found'}
+    except requests.RequestException as e:
+        return {'valid': False, 'error': f'API error: {str(e)}'}
+    except (json.JSONDecodeError, KeyError) as e:
+        return {'valid': False, 'error': f'Invalid response: {str(e)}'}
+
+# ==========================================
+# Real AI Validation Function (Using CrewAI)
+# ==========================================
+
+def validate_provider_with_ai(provider_name, state):
+    """
+    Real AI validation using CrewAI multi-agent system.
+    """
+    try:
+        # Import the CrewAI components
+        from crew import provider_validation_crew
+        from config import Config
+        import hashlib
+        from datetime import datetime
+        
+        # Generate a unique report filename
+        safe_name = re.sub(r'[^\w\-_]', '', provider_name.replace(' ', '_'))
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        report_filename = f"ai_reports/{safe_name}_{state}_{timestamp}.md"
+        
+        # Save original Config.REPORTS_DIR
+        original_reports_dir = Config.REPORTS_DIR
+        
+        try:
+            # Temporarily change reports directory for this run
+            Config.REPORTS_DIR = Path('ai_reports')
+            
+            print(f"\n{'='*70}")
+            print(f"AI VALIDATION STARTED")
+            print(f"{'='*70}")
+            print(f"Provider: {provider_name}")
+            print(f"State: {state}")
+            print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"{'='*70}")
+            
+            # Run the AI validation
+            result = provider_validation_crew.kickoff(inputs={
+                'provider_name': provider_name,
+                'state': state
+            })
+            
+            # Read the generated report
+            report_path = Config.REPORTS_DIR / "provider_validation_report.md"
+            
+            # Rename the report to our unique filename
+            if report_path.exists():
+                report_path.rename(report_filename)
+                report_content = ""
+                try:
+                    with open(report_filename, 'r', encoding='utf-8') as f:
+                        report_content = f.read()
+                except:
+                    report_content = str(result)
+            else:
+                # If report file wasn't created, create one
+                report_content = f"""# AI Healthcare Provider Validation Report
+
+## Provider Information
+- **Name**: {provider_name}
+- **State**: {state}
+- **Validation Date**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+- **AI Model**: CrewAI Multi-Agent System
+
+## Validation Result
+{str(result)}
+
+## AI Analysis Summary
+This validation was performed using our CrewAI multi-agent system.
+
+## Generated by MediverifyAI Real AI System
+"""
+                with open(report_filename, 'w', encoding='utf-8') as f:
+                    f.write(report_content)
+            
+            # Parse the AI result
+            ai_result_str = str(result).lower()
+            is_valid = "valid" in ai_result_str or "active" in ai_result_str or "clear" in ai_result_str
+            has_issues = "issue" in ai_result_str or "warning" in ai_result_str or "discrepancy" in ai_result_str
+            is_sanctioned = "sanction" in ai_result_str or "exclusion" in ai_result_str or "flagged" in ai_result_str
+            
+            # Generate mock data for display
+            input_str = f"{provider_name.lower()}_{state.lower()}_{timestamp}"
+            hash_val = int(hashlib.md5(input_str.encode()).hexdigest(), 16)
+            mock_npi = str(1000000000 + (hash_val % 9000000000))
+            
+            specialties = [
+                "Family Medicine", "Internal Medicine", "Pediatrics", "Cardiology",
+                "Dermatology", "Psychiatry", "General Surgery", "Orthopedic Surgery",
+                "Radiology", "Anesthesiology", "Emergency Medicine", "Obstetrics & Gynecology"
+            ]
+            specialty = specialties[hash_val % len(specialties)]
+            
+            cities_by_state = {
+                'CA': ['Los Angeles', 'San Francisco', 'San Diego', 'Sacramento', 'San Jose'],
+                'NY': ['New York', 'Buffalo', 'Rochester', 'Albany', 'Syracuse'],
+                'TX': ['Houston', 'Dallas', 'Austin', 'San Antonio', 'Fort Worth'],
+                'FL': ['Miami', 'Orlando', 'Tampa', 'Jacksonville', 'Tallahassee'],
+                'IL': ['Chicago', 'Springfield', 'Peoria', 'Naperville', 'Rockford']
+            }
+            city = random.choice(cities_by_state.get(state, ['Unknown City']))
+            
+            print(f"\n{'='*70}")
+            print(f"AI VALIDATION COMPLETED")
+            print(f"{'='*70}")
+            print(f"Report saved to: {report_filename}")
+            print(f"Status: {'VALID' if is_valid else 'NEEDS REVIEW'}")
+            print(f"{'='*70}\n")
+            
+            return {
+                'status': 'success',
+                'result': str(result),
+                'report_path': report_filename,
+                'valid': is_valid,
+                'has_issues': has_issues,
+                'is_sanctioned': is_sanctioned,
+                'mock_npi': mock_npi,
+                'specialty': specialty,
+                'location': f"{city}, {state}",
+                'report_content': report_content[:1000] + "..." if len(report_content) > 1000 else report_content,
+                'ai_model_used': True,
+                'validation_time': datetime.now().isoformat()
+            }
+            
+        finally:
+            # Restore original reports directory
+            Config.REPORTS_DIR = original_reports_dir
+            
+    except Exception as e:
+        print(f"AI Validation Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        # Fallback to mock validation if AI fails
+        return mock_validate_provider(provider_name, state)
+
+# ==========================================
+# Mock AI Validation Function (Fallback)
+# ==========================================
+
+def mock_validate_provider(provider_name, state):
+    """
+    Mock AI validation for development - used as fallback
+    """
+    import hashlib
+    
+    input_str = f"{provider_name.lower()}_{state.lower()}"
+    hash_val = int(hashlib.md5(input_str.encode()).hexdigest(), 16)
+    
+    is_valid = (hash_val % 10) > 2
+    is_sanctioned = (hash_val % 20) == 0
+    has_discrepancies = (hash_val % 4) == 0
+    mock_npi = str(1000000000 + (hash_val % 9000000000))
+    
+    specialties = [
+        "Family Medicine", "Internal Medicine", "Pediatrics", "Cardiology",
+        "Dermatology", "Psychiatry", "General Surgery", "Orthopedic Surgery",
+        "Radiology", "Anesthesiology", "Emergency Medicine", "Obstetrics & Gynecology"
+    ]
+    specialty = specialties[hash_val % len(specialties)]
+    
+    cities_by_state = {
+        'CA': ['Los Angeles', 'San Francisco', 'San Diego', 'Sacramento', 'San Jose'],
+        'NY': ['New York', 'Buffalo', 'Rochester', 'Albany', 'Syracuse'],
+        'TX': ['Houston', 'Dallas', 'Austin', 'San Antonio', 'Fort Worth'],
+        'FL': ['Miami', 'Orlando', 'Tampa', 'Jacksonville', 'Tallahassee'],
+        'IL': ['Chicago', 'Springfield', 'Peoria', 'Naperville', 'Rockford']
+    }
+    city = random.choice(cities_by_state.get(state, ['Unknown City']))
+    
+    if not is_valid:
+        return {
+            'status': 'success',
+            'result': f"NO_USER_FOUND: Provider '{provider_name}' not found in {state} verification systems.",
+            'report_path': '',
+            'valid': False,
+            'ai_model_used': False,
+            'is_mock': True
+        }
+    
+    # Create mock report
+    report_content = f"""# Healthcare Provider Validation Report (MOCK)
+
+## Provider Information
+- **Name**: {provider_name}
+- **State**: {state}
+- **NPI**: {mock_npi}
+- **Validation Date**: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+## AI Validation Summary
+{"✅ VALID" if is_valid else "⚠️ NEEDS REVIEW"}
+
+## Quick Results
+- **NPI Check**: {"✅ Active" if is_valid else "❌ Inactive"}
+- **License Status**: {"✅ Active" if is_valid else "❌ Inactive"}
+- **Sanctions**: {"✅ Clear" if not is_sanctioned else "❌ Flagged"}
+- **Discrepancies**: {"None" if not has_discrepancies else "Found"}
+
+## Generated by MediverifyAI Mock System
+*Note: This is mock data. Enable real AI for actual validation.*
+"""
+    
+    safe_name = re.sub(r'[^\w\-_]', '', provider_name.replace(' ', '_'))
+    report_filename = f"ai_reports/MOCK_{safe_name}_{state}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+    
+    with open(report_filename, 'w', encoding='utf-8') as f:
+        f.write(report_content)
+    
+    ai_result_str = f"""
+AI VALIDATION COMPLETE for {provider_name} in {state}
+
+OVERALL STATUS: {"VALID" if is_valid else "NEEDS REVIEW"}
+
+KEY FINDINGS:
+- NPI: {mock_npi} ({"Active" if is_valid else "Inactive"})
+- State License: {state} ({"Active" if is_valid else "Inactive"})
+- Sanctions Check: {"CLEAR" if not is_sanctioned else "FLAGGED"}
+- Specialty: {specialty}
+- Location: {city}, {state}
+
+{"⚠️ NOTE: This is MOCK data. Real AI validation not configured."}
+
+"""
+    
+    return {
+        'status': 'success',
+        'result': ai_result_str,
+        'report_path': report_filename,
+        'valid': is_valid,
+        'has_issues': has_discrepancies,
+        'is_sanctioned': is_sanctioned,
+        'mock_npi': mock_npi,
+        'specialty': specialty,
+        'location': f"{city}, {state}",
+        'report_content': report_content,
+        'ai_model_used': False,
+        'is_mock': True,
+        'validation_time': datetime.datetime.now().isoformat()
+    }
+
+# ==========================================
+# Shared Templates
+# ==========================================
+
+NAV_TEMPLATE = """
+<!-- Navigation -->
+<nav class="glass fixed w-full z-50 transition-all duration-300" id="navbar">
+    <div class="container mx-auto px-6 py-4">
+        <div class="flex items-center justify-between">
+            <!-- Logo -->
+            <a href="/" class="flex items-center gap-3 group">
+                <div class="bg-brand-600 text-white w-10 h-10 rounded-xl flex items-center justify-center shadow-lg shadow-brand-500/30 group-hover:scale-105 transition-transform">
+                    <i class="fa-solid fa-staff-snake text-xl"></i>
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-xl font-bold tracking-tight text-slate-900 dark:text-white leading-none">Mediverify<span class="text-brand-600 dark:text-brand-400">AI</span></span>
+                </div>
+            </a>
+
+            <!-- Desktop Links -->
+            <div class="hidden md:flex items-center gap-8">
+                <a href="#features" class="text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors">Features</a>
+                <a href="#how-it-works" class="text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors">How it Works</a>
+                <a href="#faq" class="text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors">FAQ</a>
+                <a href="/search" class="text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors">Search Providers</a>
+                <a href="/npi-lookup" class="text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors">NPI Lookup</a>
+            </div>
+
+            <!-- Right Actions -->
+            <div class="hidden md:flex items-center gap-4">
+                
+                <!-- Dark Mode Toggle -->
+                <button onclick="toggleDarkMode()" class="w-10 h-10 rounded-full flex items-center justify-center text-slate-600 dark:text-yellow-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                    <i class="fa-solid fa-moon dark:hidden"></i>
+                    <i class="fa-solid fa-sun hidden dark:block"></i>
+                </button>
+
+                <a href="/validator" class="text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 flex items-center gap-2">
+                    <i class="fa-solid fa-shield-halved"></i> Bulk Validator
+                </a>
+                
+                <button onclick="openModal('loginModal')" class="bg-slate-900 dark:bg-white dark:text-slate-900 text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-800 dark:hover:bg-slate-200 transition-all hover:shadow-lg hover:-translate-y-0.5">
+                    Log In
+                </button>
+            </div>
+
+            <!-- Mobile Menu Button -->
+            <button class="md:hidden text-slate-700 dark:text-slate-200 text-2xl" onclick="toggleMobileMenu()">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Mobile Menu -->
+    <div id="mobile-menu" class="hidden md:hidden bg-white dark:bg-dark-900 border-t border-slate-100 dark:border-slate-800 absolute w-full shadow-xl">
+        <div class="flex flex-col p-4 space-y-4">
+            <a href="#features" class="text-slate-600 dark:text-slate-300 font-medium" onclick="toggleMobileMenu()">Features</a>
+            <a href="#how-it-works" class="text-slate-600 dark:text-slate-300 font-medium" onclick="toggleMobileMenu()">How it Works</a>
+            <a href="#faq" class="text-slate-600 dark:text-slate-300 font-medium" onclick="toggleMobileMenu()">FAQ</a>
+            <a href="/search" class="text-slate-600 dark:text-slate-300 font-medium" onclick="toggleMobileMenu()">Search Providers</a>
+            <a href="/npi-lookup" class="text-slate-600 dark:text-slate-300 font-medium" onclick="toggleMobileMenu()">NPI Lookup</a>
+            <hr class="border-slate-100 dark:border-slate-800">
+            <div class="flex items-center justify-between">
+                <span class="text-slate-600 dark:text-slate-300 font-medium">Theme</span>
+                <button onclick="toggleDarkMode()" class="text-slate-600 dark:text-yellow-400">
+                    <i class="fa-solid fa-moon dark:hidden"></i>
+                    <i class="fa-solid fa-sun hidden dark:block"></i>
+                </button>
+            </div>
+            <a href="/validator" class="text-slate-600 dark:text-slate-300 font-medium" onclick="toggleMobileMenu()">Bulk Validator</a>
+            <button onclick="openModal('loginModal'); toggleMobileMenu()" class="w-full bg-brand-600 text-white px-4 py-2 rounded-lg font-medium">Log In</button>
+        </div>
+    </div>
+</nav>
+"""
+
+FOOTER_TEMPLATE = """
+<!-- Footer -->
+<footer class="bg-dark-900 dark:bg-black text-white pt-20 pb-10 border-t dark:border-slate-800">
+    <div class="container mx-auto px-6">
+        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-12 mb-16">
+            
+            <!-- Brand Column -->
+            <div class="space-y-6">
+                <div class="flex items-center gap-2">
+                    <div class="bg-brand-600 text-white w-8 h-8 rounded-lg flex items-center justify-center">
+                        <i class="fa-solid fa-staff-snake"></i>
+                    </div>
+                    <span class="text-xl font-bold tracking-tight">MediverifyAI</span>
+                </div>
+                <p class="text-slate-400 text-sm leading-relaxed">
+                    The trusted standard for healthcare data verification. Empowering organizations with AI-driven insights.
+                </p>
+                <div class="flex gap-4">
+                    <a href="#" class="w-10 h-10 rounded-full bg-dark-800 dark:bg-slate-900 flex items-center justify-center hover:bg-brand-600 transition-colors"><i class="fa-brands fa-twitter"></i></a>
+                    <a href="#" class="w-10 h-10 rounded-full bg-dark-800 dark:bg-slate-900 flex items-center justify-center hover:bg-brand-600 transition-colors"><i class="fa-brands fa-linkedin"></i></a>
+                    <a href="#" class="w-10 h-10 rounded-full bg-dark-800 dark:bg-slate-900 flex items-center justify-center hover:bg-brand-600 transition-colors"><i class="fa-brands fa-github"></i></a>
+                </div>
+            </div>
+
+            <!-- Links Column -->
+            <div>
+                <h4 class="font-bold text-lg mb-6">Product</h4>
+                <ul class="space-y-4 text-sm text-slate-400">
+                    <li><a href="/search" class="hover:text-brand-500 transition-colors">Provider Search</a></li>
+                    <li><a href="/npi-lookup" class="hover:text-brand-500 transition-colors">NPI Lookup</a></li>
+                    <li><a href="/validator" class="hover:text-brand-500 transition-colors">Bulk Validation</a></li>
+                    <li><a href="#" class="hover:text-brand-500 transition-colors">API Documentation</a></li>
+                    <li><a href="#" class="hover:text-brand-500 transition-colors">Pricing</a></li>
+                </ul>
+            </div>
+
+            <!-- Links Column -->
+            <div>
+                <h4 class="font-bold text-lg mb-6">Company</h4>
+                <ul class="space-y-4 text-sm text-slate-400">
+                    <li><a href="#" class="hover:text-brand-500 transition-colors">About Us</a></li>
+                    <li><a href="#" class="hover:text-brand-500 transition-colors">Careers</a></li>
+                    <li><a href="#" class="hover:text-brand-500 transition-colors">Privacy Policy</a></li>
+                    <li><a href="#" class="hover:text-brand-500 transition-colors">Terms of Service</a></li>
+                </ul>
+            </div>
+
+            <!-- Newsletter Column -->
+            <div>
+                <h4 class="font-bold text-lg mb-6">Stay Updated</h4>
+                <p class="text-slate-400 text-sm mb-4">Subscribe to our newsletter for the latest healthcare data trends.</p>
+                <form onsubmit="handleSubscribe(event)" class="relative">
+                    <input type="email" required placeholder="Enter your email" class="w-full bg-dark-800 dark:bg-slate-900 border border-slate-700 text-white px-4 py-3 rounded-lg focus:outline-none focus:border-brand-500 text-sm">
+                    <button type="submit" class="absolute right-1 top-1 bottom-1 bg-brand-600 px-4 rounded-md text-sm font-bold hover:bg-brand-500 transition-colors">
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="border-t border-slate-800 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
+            <p class="text-slate-500 text-sm">© 2024 MediverifyAI Inc. All rights reserved.</p>
+            <div class="flex gap-6 text-sm text-slate-500">
+                <a href="#" class="hover:text-white">Privacy</a>
+                <a href="#" class="hover:text-white">Cookies</a>
+                <a href="#" class="hover:text-white">Security</a>
+            </div>
+        </div>
+    </div>
+</footer>
+"""
+
+LOGIN_MODAL_TEMPLATE = """
+<!-- Login Modal -->
+<div id="loginModal" class="fixed inset-0 z-[60] hidden transition-opacity duration-300 opacity-0 modal-container" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onclick="closeModal('loginModal')"></div>
+    <div class="fixed inset-0 z-10 overflow-y-auto">
+        <div class="flex min-h-full items-center justify-center p-4">
+            <div class="relative transform overflow-hidden rounded-2xl bg-white dark:bg-dark-800 text-left shadow-2xl transition-all w-full max-w-md border border-slate-100 dark:border-slate-700 scale-95 transition-transform duration-300 modal-panel">
+                <div class="p-8">
+                    <div class="text-center mb-8">
+                        <div class="bg-brand-600 text-white w-12 h-12 rounded-xl flex items-center justify-center shadow-lg mx-auto mb-4">
+                            <i class="fa-solid fa-staff-snake text-2xl"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold text-slate-900 dark:text-white">Welcome Back</h3>
+                        <p class="text-sm text-slate-500 dark:text-slate-400 mt-2">Sign in to access your dashboard</p>
+                    </div>
+                    
+                    <form onsubmit="handleLogin(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-2">Email Address</label>
+                            <input type="email" required class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg p-3 text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all text-slate-900 dark:text-white" placeholder="name@company.com">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-2">Password</label>
+                            <input type="password" required class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg p-3 text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all text-slate-900 dark:text-white" placeholder="••••••••">
+                        </div>
+                        
+                        <div class="flex items-center justify-between text-xs">
+                            <label class="flex items-center gap-2 text-slate-600 dark:text-slate-400 cursor-pointer">
+                                <input type="checkbox" class="rounded border-slate-300 text-brand-600 focus:ring-brand-500">
+                                Remember me
+                            </label>
+                            <a href="#" class="text-brand-600 dark:text-brand-400 hover:underline">Forgot password?</a>
+                        </div>
+
+                        <button type="submit" class="w-full bg-slate-900 dark:bg-white dark:text-slate-900 text-white py-3 rounded-lg font-bold hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors shadow-lg">
+                            Sign In
+                        </button>
+                    </form>
+
+                    <div class="mt-6 text-center text-xs text-slate-500 dark:text-slate-400">
+                        Don't have an account? <a href="#" class="text-brand-600 dark:text-brand-400 font-bold hover:underline">Sign up</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+"""
+
+SHARED_SCRIPTS = """
+<script>
+    // --- Dark Mode Logic ---
+    function toggleDarkMode() {
+        const html = document.documentElement;
+        if (html.classList.contains('dark')) {
+            html.classList.remove('dark');
+            localStorage.setItem('theme', 'light');
+        } else {
+            html.classList.add('dark');
+            localStorage.setItem('theme', 'dark');
+        }
+    }
+
+    // Initialize theme
+    if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+    } else {
+        document.documentElement.classList.remove('dark');
+    }
+
+    // --- Generic Modal Logic ---
+    function openModal(id) {
+        const modal = document.getElementById(id);
+        const panel = modal.querySelector('.modal-panel');
+        modal.classList.remove('hidden');
+        setTimeout(() => {
+            modal.classList.remove('opacity-0');
+            panel.classList.remove('scale-95');
+            panel.classList.add('scale-100');
+        }, 10);
+    }
+
+    function closeModal(id) {
+        const modal = document.getElementById(id);
+        const panel = modal.querySelector('.modal-panel');
+        modal.classList.add('opacity-0');
+        panel.classList.remove('scale-100');
+        panel.classList.add('scale-95');
+        setTimeout(() => modal.classList.add('hidden'), 300);
+    }
+
+    // --- Login Logic ---
+    function handleLogin(e) {
+        e.preventDefault();
+        const btn = e.target.querySelector('button[type="submit"]');
+        const originalText = btn.innerHTML;
+        
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+        btn.disabled = true;
+        
+        setTimeout(() => {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+            closeModal('loginModal');
+            showToast('Welcome back! You have successfully logged in.', 'success');
+        }, 1500);
+    }
+
+    // --- Newsletter Subscription ---
+    function handleSubscribe(e) {
+        e.preventDefault();
+        const btn = e.target.querySelector('button');
+        const originalIcon = btn.innerHTML;
+        
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+        setTimeout(() => {
+            btn.innerHTML = originalIcon;
+            e.target.reset();
+            showToast("You've been subscribed to the newsletter!");
+        }, 1000);
+    }
+
+    // --- Toast Notifications ---
+    function showToast(message, type='success') {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+        const toast = document.createElement('div');
+        
+        const colors = type === 'success' ? 'bg-green-600' : 'bg-red-600';
+        const icon = type === 'success' ? 'fa-check' : 'fa-exclamation-triangle';
+
+        toast.className = `${colors} text-white px-6 py-4 rounded-lg shadow-xl flex items-center gap-3 transform translate-y-10 opacity-0 transition-all duration-300 min-w-[300px] border border-white/10`;
+        toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span class="font-medium text-sm">${message}</span>`;
+        
+        container.appendChild(toast);
+        
+        requestAnimationFrame(() => {
+            toast.classList.remove('translate-y-10', 'opacity-0');
+        });
+
+        setTimeout(() => {
+            toast.classList.add('translate-y-10', 'opacity-0');
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    // --- Mobile Menu ---
+    function toggleMobileMenu() {
+        const menu = document.getElementById('mobile-menu');
+        menu.classList.toggle('hidden');
+    }
+</script>
+"""
+
+# ==========================================
+# Main HTML Template
+# ==========================================
+
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediverifyAI - Intelligent Healthcare Verification</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        },
+                        dark: {
+                            950: '#020617',
+                            900: '#0f172a',
+                            800: '#1e293b',
+                            700: '#334155',
+                        }
+                    },
+                    animation: {
+                        'float': 'float 6s ease-in-out infinite',
+                        'blob': 'blob 10s infinite',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-10px)' },
+                        },
+                        blob: {
+                            '0%': { transform: 'translate(0px, 0px) scale(1)' },
+                            '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
+                            '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
+                            '100%': { transform: 'translate(0px, 0px) scale(1)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        
+        .glass {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+        }
+        
+        .dark .glass {
+            background: rgba(15, 23, 42, 0.85);
+            border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+        }
+
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.8s ease-out;
+        }
+        .reveal.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .cursor::after {
+            content: '|';
+            animation: blink 1s step-start infinite;
+        }
+        @keyframes blink { 50% { opacity: 0; } }
+        
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .dark ::-webkit-scrollbar-thumb { background: #475569; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 dark:bg-dark-950 dark:text-slate-200 antialiased overflow-x-hidden relative transition-colors duration-300">
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-3"></div>
+
+    <!-- Background Blobs -->
+    <div class="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
+        <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-brand-100 dark:bg-brand-900/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl opacity-50 animate-blob"></div>
+        <div class="absolute bottom-0 left-0 w-[500px] h-[500px] bg-purple-100 dark:bg-purple-900/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl opacity-50 animate-blob animation-delay-2000"></div>
+    </div>
+
+""" + NAV_TEMPLATE + LOGIN_MODAL_TEMPLATE + """
+
+    <!-- Hero Section -->
+    <section class="pt-32 pb-20 lg:pt-48 lg:pb-32 px-6 relative">
+        <div class="container mx-auto grid lg:grid-cols-2 gap-12 items-center">
+            
+            <!-- Hero Text -->
+            <div class="max-w-2xl reveal active">
+                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs font-bold uppercase tracking-wide mb-6">
+                    <span class="relative flex h-2 w-2">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                    </span>
+                    Live Database v3.1
+                </div>
+                
+                <h1 class="text-5xl lg:text-6xl font-extrabold text-slate-900 dark:text-white leading-[1.15] mb-6">
+                    Verified Healthcare Data,<br>
+                    <span class="text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-purple-600 cursor">Powered by AI</span>
+                </h1>
+                
+                <p class="text-lg text-slate-600 dark:text-slate-400 mb-10 leading-relaxed max-w-lg">
+                    Instantly validate NPI numbers, check medical licenses, and screen sanctions with our real-time, AI-driven compliance engine.
+                </p>
+
+                <!-- Search Box -->
+                <div class="relative max-w-xl group z-20">
+                    <div class="absolute -inset-0.5 bg-gradient-to-r from-brand-500 to-purple-500 rounded-2xl blur opacity-30 group-hover:opacity-60 transition duration-200"></div>
+                    <div class="relative bg-white dark:bg-dark-800 rounded-xl shadow-xl flex items-center p-2 border border-transparent dark:border-slate-700">
+                        <i class="fa-solid fa-search text-slate-400 ml-4 text-lg"></i>
+                        <input type="text" 
+                               id="heroSearch"
+                               placeholder="Search NPI, Name, or Specialty..." 
+                               class="w-full p-4 text-slate-700 dark:text-slate-200 font-medium outline-none bg-transparent placeholder-slate-400">
+                        <select id="stateSelect" class="ml-2 p-4 text-slate-700 dark:text-slate-200 font-medium outline-none bg-transparent border-l border-slate-200 dark:border-slate-600">
+                            <option value="CA">California</option>
+                            <option value="NY">New York</option>
+                            <option value="TX">Texas</option>
+                            <option value="FL">Florida</option>
+                            <option value="IL">Illinois</option>
+                        </select>
+                        <button onclick="performSearch()" class="bg-brand-600 text-white p-3.5 px-8 rounded-lg font-semibold hover:bg-brand-700 transition-colors shadow-lg shadow-brand-500/30 ml-2">
+                            AI Validate
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mt-8 flex items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
+                    <div class="flex -space-x-2">
+                        <div class="w-8 h-8 rounded-full border-2 border-white dark:border-dark-900 bg-blue-500 flex items-center justify-center text-white text-xs">JD</div>
+                        <div class="w-8 h-8 rounded-full border-2 border-white dark:border-dark-900 bg-green-500 flex items-center justify-center text-white text-xs">MS</div>
+                        <div class="w-8 h-8 rounded-full border-2 border-white dark:border-dark-900 bg-purple-500 flex items-center justify-center text-white text-xs">AR</div>
+                    </div>
+                    <span>Trusted by 2,000+ Providers</span>
+                </div>
+            </div>
+
+            <!-- Hero Image/Illustration -->
+            <div class="relative lg:h-[600px] flex items-center justify-center reveal delay-200">
+                <div class="relative w-full max-w-md">
+                    <!-- Main Card -->
+                    <div class="bg-white dark:bg-dark-800 rounded-2xl shadow-2xl overflow-hidden border border-slate-100 dark:border-slate-700 relative z-10 animate-float">
+                        <div class="bg-slate-900 dark:bg-black p-4 flex items-center justify-between">
+                            <span class="text-white font-bold">Provider Dashboard</span>
+                            <i class="fa-solid fa-chart-line text-brand-400"></i>
+                        </div>
+                        <div class="p-6 space-y-6">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-slate-400 text-sm">Active Providers</p>
+                                    <p class="text-3xl font-bold text-white">1,247</p>
+                                </div>
+                                <div class="w-12 h-12 bg-green-500/20 rounded-xl flex items-center justify-center">
+                                    <i class="fa-solid fa-arrow-up text-green-400"></i>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4 text-sm">
+                                <div class="bg-slate-700/50 rounded-lg p-3">
+                                    <p class="text-slate-400">Compliance Rate</p>
+                                    <p class="text-emerald-400 font-semibold">98.7%</p>
+                                </div>
+                                <div class="bg-slate-700/50 rounded-lg p-3">
+                                    <p class="text-slate-400">Sanctions Flagged</p>
+                                    <p class="text-red-400 font-semibold">3</p>
+                                </div>
+                            </div>
+                            <button class="w-full bg-brand-600 text-white py-3 rounded-xl font-semibold hover:bg-brand-700 transition-colors">View Details</button>
+                        </div>
+                    </div>
+                    <!-- Floating Elements -->
+                    <div class="absolute -top-4 -right-4 w-20 h-20 bg-purple-500/10 rounded-full"></div>
+                    <div class="absolute -bottom-4 left-4 w-16 h-16 bg-brand-500/10 rounded-full"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="py-24 px-6 bg-slate-50 dark:bg-dark-950 relative transition-colors duration-300">
+        <div class="container mx-auto">
+            <div class="text-center max-w-3xl mx-auto mb-16 reveal">
+                <h2 class="text-3xl lg:text-4xl font-bold text-slate-900 dark:text-white mb-4">Why Choose MediverifyAI?</h2>
+                <p class="text-slate-600 dark:text-slate-400">We combine official government databases with advanced machine learning to provide the most accurate healthcare provider data API on the market.</p>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8">
+                <!-- Card 1 -->
+                <div class="bg-white dark:bg-dark-800 p-8 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group reveal">
+                    <div class="w-14 h-14 bg-brand-50 dark:bg-brand-900/30 rounded-xl flex items-center justify-center text-brand-600 dark:text-brand-400 text-2xl mb-6 group-hover:bg-brand-600 group-hover:text-white transition-colors">
+                        <i class="fa-solid fa-bolt"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-3">Real-Time Validation</h3>
+                    <p class="text-slate-500 dark:text-slate-400 leading-relaxed">Direct connection to NPPES and state licensing boards ensures data is never stale.</p>
+                </div>
+
+                <!-- Card 2 -->
+                <div class="bg-white dark:bg-dark-800 p-8 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group reveal delay-100">
+                    <div class="w-14 h-14 bg-purple-50 dark:bg-purple-900/30 rounded-xl flex items-center justify-center text-purple-600 dark:text-purple-400 text-2xl mb-6 group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                        <i class="fa-solid fa-brain"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-3">AI Anomaly Detection</h3>
+                    <p class="text-slate-500 dark:text-slate-400 leading-relaxed">Our algorithms flag suspicious patterns and potential fraud risks in provider profiles.</p>
+                </div>
+
+                <!-- Card 3 -->
+                <div class="bg-white dark:bg-dark-800 p-8 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group reveal delay-200">
+                    <div class="w-14 h-14 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 text-2xl mb-6 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                        <i class="fa-solid fa-code"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-3">Developer Friendly API</h3>
+                    <p class="text-slate-500 dark:text-slate-400 leading-relaxed">Integrate comprehensive healthcare data into your app with just a few lines of code.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section id="how-it-works" class="py-24 px-6 bg-white dark:bg-dark-900 transition-colors duration-300">
+        <div class="container mx-auto">
+            <div class="flex flex-col lg:flex-row gap-16 items-center">
+                <div class="lg:w-1/2 reveal">
+                    <img src="https://img.freepik.com/free-vector/data-extraction-concept-illustration_114360-4876.jpg" alt="How it works" class="w-full rounded-2xl mix-blend-multiply dark:mix-blend-normal dark:opacity-80">
+                </div>
+                <div class="lg:w-1/2 space-y-10 reveal">
+                    <h2 class="text-3xl lg:text-4xl font-bold text-slate-900 dark:text-white">Seamless Integration Workflow</h2>
+                    
+                    <div class="flex gap-4">
+                        <div class="flex flex-col items-center">
+                            <div class="w-8 h-8 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold text-sm">1</div>
+                            <div class="w-0.5 h-full bg-slate-100 dark:bg-slate-800 my-2"></div>
+                        </div>
+                        <div>
+                            <h4 class="text-lg font-bold text-slate-900 dark:text-white">Input Data</h4>
+                            <p class="text-slate-500 dark:text-slate-400 mt-1">Enter an NPI number, name, or upload a CSV file of providers.</p>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-4">
+                        <div class="flex flex-col items-center">
+                            <div class="w-8 h-8 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold text-sm">2</div>
+                            <div class="w-0.5 h-full bg-slate-100 dark:bg-slate-800 my-2"></div>
+                        </div>
+                        <div>
+                            <h4 class="text-lg font-bold text-slate-900 dark:text-white">AI Processing</h4>
+                            <p class="text-slate-500 dark:text-slate-400 mt-1">Our system cross-references 50+ databases and runs compliance checks.</p>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-4">
+                        <div class="flex flex-col items-center">
+                            <div class="w-8 h-8 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold text-sm">3</div>
+                        </div>
+                        <div>
+                            <h4 class="text-lg font-bold text-slate-900 dark:text-white">Get Results</h4>
+                            <p class="text-slate-500 dark:text-slate-400 mt-1">Receive a detailed JSON report or view the verified profile instantly.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section id="faq" class="py-24 px-6 bg-slate-50 dark:bg-dark-950 transition-colors duration-300">
+        <div class="container mx-auto max-w-3xl">
+            <h2 class="text-3xl font-bold text-slate-900 dark:text-white text-center mb-12 reveal">Frequently Asked Questions</h2>
+            
+            <div class="space-y-4">
+                <!-- FAQ Item 1 -->
+                <div class="bg-white dark:bg-dark-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden reveal">
+                    <button class="w-full px-6 py-4 text-left flex justify-between items-center font-semibold text-slate-900 dark:text-white focus:outline-none" onclick="toggleAccordion(1)">
+                        <span>Is the data updated in real-time?</span>
+                        <i id="icon-1" class="fa-solid fa-chevron-down text-slate-400 transition-transform"></i>
+                    </button>
+                    <div id="content-1" class="hidden px-6 pb-4 text-slate-600 dark:text-slate-400 text-sm leading-relaxed">
+                        Yes, our system queries the NPPES registry and state licensing boards in real-time to ensure you always have the latest information.
+                    </div>
+                </div>
+
+                <!-- FAQ Item 2 -->
+                <div class="bg-white dark:bg-dark-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden reveal delay-100">
+                    <button class="w-full px-6 py-4 text-left flex justify-between items-center font-semibold text-slate-900 dark:text-white focus:outline-none" onclick="toggleAccordion(2)">
+                        <span>Do you offer an API for developers?</span>
+                        <i id="icon-2" class="fa-solid fa-chevron-down text-slate-400 transition-transform"></i>
+                    </button>
+                    <div id="content-2" class="hidden px-6 pb-4 text-slate-600 dark:text-slate-400 text-sm leading-relaxed">
+                        Absolutely. We have a RESTful API with extensive documentation, enabling you to integrate NPI validation directly into your existing software.
+                    </div>
+                </div>
+
+                <!-- FAQ Item 3 -->
+                <div class="bg-white dark:bg-dark-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden reveal delay-200">
+                    <button class="w-full px-6 py-4 text-left flex justify-between items-center font-semibold text-slate-900 dark:text-white focus:outline-none" onclick="toggleAccordion(3)">
+                        <span>Is this service HIPAA compliant?</span>
+                        <i id="icon-3" class="fa-solid fa-chevron-down text-slate-400 transition-transform"></i>
+                    </button>
+                    <div id="content-3" class="hidden px-6 pb-4 text-slate-600 dark:text-slate-400 text-sm leading-relaxed">
+                        Yes, MediverifyAI adheres to strict security standards including HIPAA compliance to ensure all data handling is secure and private.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+""" + FOOTER_TEMPLATE + """
+
+    <!-- Scripts -->
+    <script>
+        // Home-specific scripts
+        // --- Scroll Animation Observer ---
+        const observerOptions = { threshold: 0.1, rootMargin: "0px 0px -50px 0px" };
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('active');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+        // --- Search Function ---
+        function performSearch() {
+            const input = document.getElementById('heroSearch');
+            const stateSelect = document.getElementById('stateSelect');
+            const val = input.value.trim();
+            const state = stateSelect.value;
+
+            if (!val) {
+                showToast('Please enter a provider name or NPI', 'error');
+                return;
+            }
+
+            // Redirect to search results page
+            window.location.href = `/search?q=${encodeURIComponent(val)}&state=${state}`;
+        }
+
+        // --- FAQ Accordion ---
+        function toggleAccordion(id) {
+            const content = document.getElementById(`content-${id}`);
+            const icon = document.getElementById(`icon-${id}`);
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                icon.classList.add('rotate-180');
+            } else {
+                content.classList.add('hidden');
+                icon.classList.remove('rotate-180');
+            }
+        }
+
+        // Enter key triggers search
+        document.getElementById('heroSearch').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                performSearch();
+            }
+        });
+    </script>
+""" + SHARED_SCRIPTS + """
+</body>
+</html>
+"""
+
+# ==========================================
+# Search Results Template
+# ==========================================
+
+SEARCH_RESULTS_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Results - MediverifyAI</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            600: '#0284c7',
+                        },
+                        dark: {
+                            950: '#020617',
+                            900: '#0f172a',
+                            800: '#1e293b',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .glass {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+        }
+        .dark .glass {
+            background: rgba(15, 23, 42, 0.85);
+            border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+        }
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 dark:bg-dark-950 dark:text-slate-200 min-h-screen">
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-3"></div>
+
+""" + NAV_TEMPLATE + LOGIN_MODAL_TEMPLATE + """
+
+    <!-- Results Content -->
+    <main class="pt-24 pb-12 px-6">
+        <div class="container mx-auto max-w-6xl">
+            <!-- Back to Search -->
+            <a href="/" class="inline-flex items-center gap-2 text-brand-600 hover:text-brand-700 mb-6">
+                <i class="fa-solid fa-arrow-left"></i>
+                Back to Search
+            </a>
+
+            <!-- Search Box (Persistent) -->
+            <div class="bg-white dark:bg-dark-800 rounded-xl shadow-lg p-6 mb-8 border border-slate-100 dark:border-slate-700">
+                <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">Search Healthcare Providers</h2>
+                <div class="flex flex-col md:flex-row gap-4">
+                    <input type="text" 
+                           id="searchInput" 
+                           placeholder="Enter NPI number or Provider Name..." 
+                           value="{{ query }}"
+                           class="flex-grow p-4 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-slate-900 dark:text-white">
+                    <select id="stateSelect" class="p-4 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white">
+                        <option value="CA" {% if state == 'CA' %}selected{% endif %}>California</option>
+                        <option value="NY" {% if state == 'NY' %}selected{% endif %}>New York</option>
+                        <option value="TX" {% if state == 'TX' %}selected{% endif %}>Texas</option>
+                        <option value="FL" {% if state == 'FL' %}selected{% endif %}>Florida</option>
+                        <option value="IL" {% if state == 'IL' %}selected{% endif %}>Illinois</option>
+                    </select>
+                    <button onclick="performSearch()" class="bg-brand-600 text-white px-8 py-4 rounded-lg font-semibold hover:bg-brand-700 transition-colors whitespace-nowrap">
+                        <i class="fa-solid fa-search mr-2"></i> Search
+                    </button>
+                </div>
+                <p class="text-sm text-slate-500 dark:text-slate-400 mt-2">
+                    <i class="fa-solid fa-info-circle mr-1"></i> Enter NPI (10 digits) for real validation or provider name for AI validation
+                </p>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loading" class="hidden bg-white dark:bg-dark-800 rounded-xl shadow-lg p-8 mb-8 text-center">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-600 mx-auto mb-4"></div>
+                <p class="text-slate-600 dark:text-slate-400">Validating provider information...</p>
+                <p class="text-sm text-slate-500 dark:text-slate-500 mt-2">Checking NPI registry, license databases, and compliance records</p>
+            </div>
+
+            <!-- Results Container -->
+            <div id="resultsContainer" class="space-y-8">
+                <!-- Results will be dynamically inserted here -->
+            </div>
+
+            <!-- No Results Template -->
+            <div id="noResultsTemplate" class="hidden bg-white dark:bg-dark-800 rounded-xl shadow-lg p-8 text-center">
+                <i class="fa-solid fa-search text-4xl text-slate-300 dark:text-slate-600 mb-4"></i>
+                <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-2">No Results Found</h3>
+                <p class="text-slate-600 dark:text-slate-400">Try a different search term or check the spelling.</p>
+            </div>
+
+            <!-- Error Template -->
+            <div id="errorTemplate" class="hidden bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl shadow-lg p-8">
+                <div class="flex items-start gap-4">
+                    <i class="fa-solid fa-exclamation-triangle text-red-600 dark:text-red-400 text-2xl mt-1"></i>
+                    <div>
+                        <h3 class="text-xl font-bold text-red-800 dark:text-red-300 mb-2">Validation Error</h3>
+                        <p id="errorMessage" class="text-red-700 dark:text-red-400"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+""" + FOOTER_TEMPLATE + """
+
+    <!-- Results Display Templates -->
+    <template id="npiResultTemplate">
+        <div class="bg-white dark:bg-dark-800 rounded-xl shadow-lg overflow-hidden border border-slate-100 dark:border-slate-700">
+            <!-- Header -->
+            <div class="bg-slate-50 dark:bg-slate-900 p-6 border-b border-slate-200 dark:border-slate-700">
+                <div class="flex flex-col md:flex-row justify-between items-start gap-4">
+                    <div>
+                        <div class="flex items-center gap-3 mb-2">
+                            <h3 class="text-2xl font-bold text-slate-900 dark:text-white" id="resultName"></h3>
+                            <span id="validBadge" class="px-3 py-1 rounded-full text-xs font-bold"></span>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
+                            <span class="font-mono" id="resultNPI"></span>
+                            <span id="resultLocation"></span>
+                            <span id="resultType"></span>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-xs text-slate-500 dark:text-slate-500 mb-1">Search Type</div>
+                        <span class="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded-full text-sm font-semibold">NPI Lookup</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Body -->
+            <div class="p-6">
+                <h4 class="text-lg font-semibold text-slate-900 dark:text-white mb-4">Provider Information</h4>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div>
+                        <div class="space-y-3">
+                            <div>
+                                <div class="text-xs text-slate-500 dark:text-slate-500 mb-1">Status</div>
+                                <div id="resultStatus" class="font-medium"></div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-slate-500 dark:text-slate-500 mb-1">Taxonomy</div>
+                                <div id="resultTaxonomy" class="font-medium"></div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-slate-500 dark:text-slate-500 mb-1">Credential</div>
+                                <div id="resultCredential" class="font-medium"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="space-y-3">
+                            <div>
+                                <div class="text-xs text-slate-500 dark:text-slate-500 mb-1">Address</div>
+                                <div id="resultAddress" class="font-medium"></div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-slate-500 dark:text-slate-500 mb-1">Phone</div>
+                                <div id="resultPhone" class="font-medium"></div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-slate-500 dark:text-slate-500 mb-1">Enumeration Date</div>
+                                <div id="resultEnumeration" class="font-medium"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Note -->
+                <div class="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
+                    <p class="text-sm text-blue-700 dark:text-blue-300">
+                        <i class="fa-solid fa-info-circle mr-2"></i>
+                        This is real data from the NPPES Registry. For comprehensive AI validation including license checks and sanctions screening, search by provider name.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="bg-slate-50 dark:bg-slate-900 p-6 border-t border-slate-200 dark:border-slate-700 text-center">
+                <p class="text-sm text-slate-600 dark:text-slate-400">Data sourced from NPPES Registry • Updated in real-time</p>
+            </div>
+        </div>
+    </template>
+
+    <template id="aiResultTemplate">
+        <div class="bg-white dark:bg-dark-800 rounded-xl shadow-lg overflow-hidden border border-slate-100 dark:border-slate-700">
+            <!-- Header -->
+            <div class="bg-gradient-to-r from-brand-500/10 to-purple-500/10 dark:from-brand-900/20 dark:to-purple-900/20 p-6 border-b border-slate-200 dark:border-slate-700">
+                <div class="flex flex-col md:flex-row justify-between items-start gap-4">
+                    <div>
+                        <div class="flex items-center gap-3 mb-2">
+                            <h3 class="text-2xl font-bold text-slate-900 dark:text-white" id="aiProviderName"></h3>
+                            <span id="aiValidBadge" class="px-3 py-1 rounded-full text-xs font-bold"></span>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
+                            <span><i class="fa-solid fa-brain mr-1"></i> AI-Powered Validation</span>
+                            <span id="aiState"></span>
+                            <span id="aiTimestamp" class="text-xs text-slate-500"></span>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-xs text-slate-500 dark:text-slate-500 mb-1">Search Type</div>
+                        <span class="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 rounded-full text-sm font-semibold">AI Validation</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Body -->
+            <div class="p-6">
+                <!-- Quick Summary -->
+                <div class="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div class="bg-slate-50 dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
+                        <div class="text-xs text-slate-500 dark:text-slate-500 mb-1">NPI</div>
+                        <div id="quickNPI" class="font-mono font-bold text-lg text-slate-900 dark:text-white"></div>
+                    </div>
+                    <div class="bg-slate-50 dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
+                        <div class="text-xs text-slate-500 dark:text-slate-500 mb-1">Specialty</div>
+                        <div id="quickSpecialty" class="font-bold text-lg text-slate-900 dark:text-white"></div>
+                    </div>
+                    <div class="bg-slate-50 dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
+                        <div class="text-xs text-slate-500 dark:text-slate-500 mb-1">Location</div>
+                        <div id="quickLocation" class="font-bold text-lg text-slate-900 dark:text-white"></div>
+                    </div>
+                    <div class="bg-slate-50 dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
+                        <div class="text-xs text-slate-500 dark:text-slate-500 mb-1">Risk Level</div>
+                        <div id="quickRisk" class="font-bold text-lg"></div>
+                    </div>
+                </div>
+
+                <div class="mb-8">
+                    <h4 class="text-lg font-semibold text-slate-900 dark:text-white mb-3">Validation Summary</h4>
+                    <div id="aiSummary" class="bg-slate-50 dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-700"></div>
+                </div>
+
+                <!-- Validation Steps -->
+                <div class="mb-8">
+                    <h4 class="text-lg font-semibold text-slate-900 dark:text-white mb-4">Validation Steps Performed</h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="bg-slate-50 dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
+                            <div class="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center text-blue-600 dark:text-blue-400 mb-2">
+                                <i class="fa-solid fa-database"></i>
+                            </div>
+                            <div class="text-sm font-semibold text-slate-900 dark:text-white">NPI Registry</div>
+                            <div class="text-xs text-slate-500 dark:text-slate-500">National verification</div>
+                        </div>
+                        <div class="bg-slate-50 dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
+                            <div class="w-8 h-8 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center text-green-600 dark:text-green-400 mb-2">
+                                <i class="fa-solid fa-id-card"></i>
+                            </div>
+                            <div class="text-sm font-semibold text-slate-900 dark:text-white">License Check</div>
+                            <div class="text-xs text-slate-500 dark:text-slate-500">State board verification</div>
+                        </div>
+                        <div class="bg-slate-50 dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
+                            <div class="w-8 h-8 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center text-purple-600 dark:text-purple-400 mb-2">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </div>
+                            <div class="text-sm font-semibold text-slate-900 dark:text-white">Sanctions Scan</div>
+                            <div class="text-xs text-slate-500 dark:text-slate-500">OIG/LEIE database</div>
+                        </div>
+                        <div class="bg-slate-50 dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
+                            <div class="w-8 h-8 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center text-red-600 dark:text-red-400 mb-2">
+                                <i class="fa-solid fa-flag"></i>
+                            </div>
+                            <div class="text-sm font-semibold text-slate-900 dark:text-white">Compliance</div>
+                            <div class="text-xs text-slate-500 dark:text-slate-500">HIPAA/Medicare rules</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Model Info -->
+                <div class="mb-6 p-4 {% if ai_model_used %}bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800{% else %}bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800{% endif %} rounded-lg">
+                    <p class="text-sm {% if ai_model_used %}text-green-700 dark:text-green-300{% else %}text-yellow-700 dark:text-yellow-300{% endif %}">
+                        <i class="fa-solid {% if ai_model_used %}fa-check-circle{% else %}fa-triangle-exclamation{% endif %} mr-2"></i>
+                        <strong>{% if ai_model_used %}Real AI Model Used:{% else %}Mock Data (AI Not Configured):{% endif %}</strong>
+                        {% if ai_model_used %}
+                        This validation used our CrewAI multi-agent system for comprehensive analysis.
+                        {% else %}
+                        This is mock data. Configure real AI in the backend for actual validation.
+                        {% endif %}
+                    </p>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex flex-wrap gap-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                    <button onclick="downloadReport()" class="bg-brand-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-brand-700 transition-colors flex items-center gap-2">
+                        <i class="fa-solid fa-download"></i> Download Report
+                    </button>
+                    <button onclick="printResults()" class="bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-300 px-6 py-3 rounded-lg font-semibold hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors flex items-center gap-2">
+                        <i class="fa-solid fa-print"></i> Print Results
+                    </button>
+                    <button onclick="performSearch()" class="bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-300 px-6 py-3 rounded-lg font-semibold hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors flex items-center gap-2">
+                        <i class="fa-solid fa-search"></i> New Search
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="noUserFoundTemplate">
+        <div class="bg-white dark:bg-dark-800 rounded-xl shadow-lg overflow-hidden border border-slate-100 dark:border-slate-700">
+            <div class="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 dark:from-yellow-900/20 dark:to-orange-900/20 p-8 text-center">
+                <div class="w-16 h-16 bg-yellow-100 dark:bg-yellow-900/30 rounded-full flex items-center justify-center text-yellow-600 dark:text-yellow-400 text-2xl mx-auto mb-4">
+                    <i class="fa-solid fa-user-slash"></i>
+                </div>
+                <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-2">Provider Not Found</h3>
+                <p class="text-slate-600 dark:text-slate-400 mb-4">The provider "<span id="notFoundName" class="font-semibold"></span>" was not found in {state} verification systems.</p>
+                <div class="text-sm text-slate-500 dark:text-slate-500 mb-6">
+                    <p class="mb-2">Possible reasons:</p>
+                    <ul class="list-disc list-inside text-left max-w-md mx-auto">
+                        <li>Provider may be newly licensed</li>
+                        <li>Name may be misspelled</li>
+                        <li>Provider may practice in a different state</li>
+                        <li>License may be inactive or expired</li>
+                    </ul>
+                </div>
+                <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                    <button onclick="performSearch()" class="bg-yellow-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-yellow-700 transition-colors flex items-center gap-2">
+                        <i class="fa-solid fa-search"></i> Try Different State
+                    </button>
+                    <button onclick="window.location.href='/'" class="bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-300 px-6 py-3 rounded-lg font-semibold hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors flex items-center gap-2">
+                        <i class="fa-solid fa-home"></i> Return Home
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <script>
+        // Get URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const query = urlParams.get('q') || '';
+        const state = urlParams.get('state') || 'CA';
+
+        // Initialize search if query exists
+        if (query) {
+            document.getElementById('searchInput').value = query;
+            document.getElementById('stateSelect').value = state;
+            setTimeout(() => performSearch(), 100);
+        }
+
+        async function performSearch() {
+            const query = document.getElementById('searchInput').value.trim();
+            const state = document.getElementById('stateSelect').value;
+
+            if (!query) {
+                showToast('Please enter a search term', 'error');
+                return;
+            }
+
+            // Update URL without reload
+            window.history.pushState({}, '', `/search?q=${encodeURIComponent(query)}&state=${state}`);
+
+            // Show loading
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('resultsContainer').innerHTML = '';
+            document.getElementById('noResultsTemplate').classList.add('hidden');
+            document.getElementById('errorTemplate').classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/search', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ query, state })
+                });
+
+                const data = await response.json();
+
+                // Hide loading
+                document.getElementById('loading').classList.add('hidden');
+
+                if (data.status === 'success') {
+                    if (data.type === 'npi') {
+                        displayNPIResults(data);
+                    } else {
+                        displayAIResults(data);
+                    }
+                    showToast('Search completed successfully!', 'success');
+                } else {
+                    displayError(data.error || 'Search failed');
+                }
+            } catch (error) {
+                document.getElementById('loading').classList.add('hidden');
+                displayError('Network error: ' + error.message);
+            }
+        }
+
+        function displayNPIResults(data) {
+            const template = document.getElementById('npiResultTemplate');
+            const clone = template.content.cloneNode(true);
+
+            // Populate data
+            clone.getElementById('resultName').textContent = data.provider_name || 'Unknown Provider';
+            clone.getElementById('resultNPI').textContent = `NPI: ${data.npi}`;
+            
+            const validBadge = clone.getElementById('validBadge');
+            if (data.valid) {
+                validBadge.textContent = 'VALID';
+                validBadge.className = 'px-3 py-1 rounded-full text-xs font-bold bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300';
+            } else {
+                validBadge.textContent = 'INVALID';
+                validBadge.className = 'px-3 py-1 rounded-full text-xs font-bold bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300';
+            }
+
+            // Populate provider data if available
+            if (data.data) {
+                const provider = data.data;
+                const basic = provider.basic || {};
+                const addresses = provider.addresses || [];
+                const taxonomies = provider.taxonomies || [];
+                
+                // Location
+                if (addresses.length > 0) {
+                    const addr = addresses[0];
+                    clone.getElementById('resultLocation').textContent = 
+                        `${addr.city || ''}, ${addr.state || ''}`;
+                    clone.getElementById('resultAddress').textContent = 
+                        `${addr.address_1 || ''} ${addr.address_2 || ''}`.trim() || 'Not available';
+                    clone.getElementById('resultPhone').textContent = addr.telephone_number || 'Not available';
+                }
+
+                // Status and type
+                clone.getElementById('resultStatus').textContent = basic.status === 'A' ? 'Active' : 'Inactive';
+                clone.getElementById('resultType').textContent = basic.enumeration_type === 'NPI-1' ? 'Individual' : 'Organization';
+                clone.getElementById('resultCredential').textContent = basic.credential || 'N/A';
+                clone.getElementById('resultEnumeration').textContent = basic.enumeration_date || 'N/A';
+                
+                // Taxonomy
+                if (taxonomies.length > 0) {
+                    const primaryTax = taxonomies.find(t => t.primary) || taxonomies[0];
+                    clone.getElementById('resultTaxonomy').textContent = primaryTax.desc || 'N/A';
+                }
+            }
+
+            document.getElementById('resultsContainer').appendChild(clone);
+        }
+
+        function displayAIResults(data) {
+            // Check if NO_USER_FOUND
+            if (data.ai_result && data.ai_result.includes('NO_USER_FOUND')) {
+                displayNoUserFound(data);
+                return;
+            }
+
+            const template = document.getElementById('aiResultTemplate');
+            const clone = template.content.cloneNode(true);
+
+            // Populate data
+            clone.getElementById('aiProviderName').textContent = data.provider_name || 'Unknown Provider';
+            clone.getElementById('aiState').textContent = `State: ${data.state}`;
+            clone.getElementById('aiTimestamp').textContent = new Date().toLocaleString();
+            
+            const validBadge = clone.getElementById('aiValidBadge');
+            if (data.valid) {
+                validBadge.textContent = 'VERIFIED';
+                validBadge.className = 'px-3 py-1 rounded-full text-xs font-bold bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300';
+            } else {
+                validBadge.textContent = 'NOT VERIFIED';
+                validBadge.className = 'px-3 py-1 rounded-full text-xs font-bold bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300';
+            }
+
+            // Quick info
+            clone.getElementById('quickNPI').textContent = data.mock_npi || 'N/A';
+            clone.getElementById('quickSpecialty').textContent = data.specialty || 'General Practice';
+            clone.getElementById('quickLocation').textContent = data.location || `${data.state} (Unknown)`;
+            
+            const riskDiv = clone.getElementById('quickRisk');
+            if (data.is_sanctioned) {
+                riskDiv.textContent = 'HIGH';
+                riskDiv.className = 'font-bold text-lg text-red-600 dark:text-red-400';
+            } else if (data.has_issues) {
+                riskDiv.textContent = 'MEDIUM';
+                riskDiv.className = 'font-bold text-lg text-yellow-600 dark:text-yellow-400';
+            } else {
+                riskDiv.textContent = 'LOW';
+                riskDiv.className = 'font-bold text-lg text-green-600 dark:text-green-400';
+            }
+
+            // Display summary
+            const summaryDiv = clone.getElementById('aiSummary');
+            if (data.ai_result) {
+                summaryDiv.innerHTML = `<pre class="text-sm">${escapeHtml(data.ai_result)}</pre>`;
+            } else if (data.summary) {
+                summaryDiv.innerHTML = `<p class="text-slate-700 dark:text-slate-300">${data.summary}</p>`;
+            }
+
+            // Update AI model info
+            const aiInfoDiv = clone.querySelector('.ai-model-info');
+            if (aiInfoDiv) {
+                if (data.ai_model_used) {
+                    aiInfoDiv.className = 'mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg';
+                    aiInfoDiv.innerHTML = `<p class="text-sm text-green-700 dark:text-green-300">
+                        <i class="fa-solid fa-check-circle mr-2"></i>
+                        <strong>Real AI Model Used:</strong> This validation used our CrewAI multi-agent system for comprehensive analysis.
+                    </p>`;
+                } else {
+                    aiInfoDiv.className = 'mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg';
+                    aiInfoDiv.innerHTML = `<p class="text-sm text-yellow-700 dark:text-yellow-300">
+                        <i class="fa-solid fa-triangle-exclamation mr-2"></i>
+                        <strong>Mock Data (AI Not Configured):</strong> This is mock data. Configure real AI in the backend for actual validation.
+                    </p>`;
+                }
+            }
+
+            document.getElementById('resultsContainer').appendChild(clone);
+        }
+
+        function displayNoUserFound(data) {
+            const template = document.getElementById('noUserFoundTemplate');
+            const clone = template.content.cloneNode(true);
+            
+            clone.getElementById('notFoundName').textContent = data.provider_name || 'Unknown';
+            
+            document.getElementById('resultsContainer').appendChild(clone);
+        }
+
+        function displayError(message) {
+            document.getElementById('errorMessage').textContent = message;
+            document.getElementById('errorTemplate').classList.remove('hidden');
+            showToast('Error: ' + message, 'error');
+        }
+
+        function downloadReport() {
+            const providerName = document.getElementById('aiProviderName')?.textContent || 
+                                document.getElementById('resultName')?.textContent ||
+                                'provider';
+            const timestamp = new Date().toISOString().slice(0, 10);
+            const filename = `MediverifyAI_Report_${providerName.replace(/\s+/g, '_')}_${timestamp}.md`;
+            
+            let reportContent = `# MediverifyAI Validation Report\n\n`;
+            reportContent += `## Provider: ${providerName}\n`;
+            reportContent += `## Date: ${new Date().toLocaleString()}\n\n`;
+            reportContent += `## Summary\n`;
+            reportContent += `This validation report was generated by MediverifyAI.\n\n`;
+            reportContent += `For more information, visit our website.\n`;
+            
+            const element = document.createElement('a');
+            element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(reportContent));
+            element.setAttribute('download', filename);
+            element.style.display = 'none';
+            document.body.appendChild(element);
+            element.click();
+            document.body.removeChild(element);
+            
+            showToast('Report downloaded!', 'success');
+        }
+
+        function printResults() {
+            window.print();
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Enter key triggers search
+        document.getElementById('searchInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                performSearch();
+            }
+        });
+    </script>
+""" + SHARED_SCRIPTS + """
+</body>
+</html>
+"""
+
+# ==========================================
+# Validator Template
+# ==========================================
+
+VALIDATOR_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Validator - MediverifyAI</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            600: '#0284c7',
+                        },
+                        dark: {
+                            950: '#020617',
+                            900: '#0f172a',
+                            800: '#1e293b',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .glass {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+        }
+        .dark .glass {
+            background: rgba(15, 23, 42, 0.85);
+            border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 dark:bg-dark-950 dark:text-slate-200 antialiased overflow-x-hidden relative transition-colors duration-300 min-h-screen">
+
+    <div id="toast-container" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-3"></div>
+
+""" + NAV_TEMPLATE + LOGIN_MODAL_TEMPLATE + """
+
+    <main class="pt-24 pb-12 px-6">
+        <div class="container mx-auto max-w-6xl">
+            <div class="text-center mb-12">
+                <h1 class="text-4xl lg:text-5xl font-bold text-slate-900 dark:text-white mb-4">Bulk NPI Validator</h1>
+                <p class="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">Upload your CSV file with NPI numbers to validate multiple providers at once. Get instant compliance reports.</p>
+            </div>
+
+            {% if results %}
+            <div class="bg-white dark:bg-dark-800 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 p-8 mb-8">
+                <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
+                    <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Validation Results</h2>
+                    <div class="flex gap-4">
+                        <a href="/download_report?session_id={{ session_id }}" class="bg-brand-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-brand-700 transition-colors flex items-center gap-2">
+                            <i class="fa-solid fa-download"></i> Download CSV
+                        </a>
+                        <a href="/search" class="bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-300 px-6 py-3 rounded-lg font-semibold hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors flex items-center gap-2">
+                            <i class="fa-solid fa-search"></i> Single Search
+                        </a>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left text-slate-500 dark:text-slate-400">
+                        <thead class="text-xs uppercase bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                            <tr>
+                                <th class="px-6 py-3">NPI</th>
+                                <th class="px-6 py-3">Provider Name</th>
+                                <th class="px-6 py-3">Status</th>
+                                <th class="px-6 py-3">Taxonomy</th>
+                                <th class="px-6 py-3">City, State</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in results %}
+                            <tr class="bg-white dark:bg-dark-800 border-b border-slate-100 dark:border-slate-700 {% if row.valid %}hover:bg-green-50 dark:hover:bg-green-900/20{% else %}hover:bg-red-50 dark:hover:bg-red-900/20{% endif %}">
+                                <td class="px-6 py-4 font-mono font-semibold">{{ row.npi }}</td>
+                                <td class="px-6 py-4">{{ row.name }}</td>
+                                <td class="px-6 py-4">
+                                    <span class="px-2 py-1 rounded-full text-xs font-bold {% if row.valid %}bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400{% else %}bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400{% endif %}">
+                                        {{ 'Valid' if row.valid else 'Invalid' }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4">{{ row.taxonomy or 'N/A' }}</td>
+                                <td class="px-6 py-4">{{ row.location or 'N/A' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-4 text-center text-sm text-slate-500 dark:text-slate-400">
+                    Processed {{ results|length }} records. {{ valid_count }} valid, {{ invalid_count }} invalid.
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="bg-white dark:bg-dark-800 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 p-8 max-w-2xl mx-auto">
+                <form method="POST" enctype="multipart/form-data" id="uploadForm">
+                    <div class="space-y-6">
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Upload CSV File</label>
+                            <input type="file" name="csv_file" accept=".csv" required class="w-full px-4 py-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none transition-all">
+                            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">CSV should have a 'NPI' column with 10-digit numbers.</p>
+                        </div>
+                        <button type="submit" class="w-full bg-brand-600 text-white py-3 rounded-lg font-semibold hover:bg-brand-700 transition-colors shadow-lg">
+                            <i class="fa-solid fa-upload mr-2"></i> Validate Batch
+                        </button>
+                    </div>
+                </form>
+                
+                <!-- Sample CSV -->
+                <div class="mt-8 p-4 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Sample CSV Format:</h4>
+                    <pre class="text-xs font-mono bg-white dark:bg-black p-3 rounded border border-slate-200 dark:border-slate-700 overflow-x-auto">
+NPI,Name
+1234567890,John Smith
+9876543210,Jane Doe
+1122334455,Robert Johnson</pre>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-2">First row should be headers. 'NPI' column is required, 'Name' is optional.</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+""" + FOOTER_TEMPLATE + """
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', function() {
+            const btn = this.querySelector('button[type="submit"]');
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Processing...';
+            btn.disabled = true;
+        });
+    </script>
+""" + SHARED_SCRIPTS + """
+</body>
+</html>
+"""
+
+# ==========================================
+# NPI Lookup Template (simplified for brevity)
+# ==========================================
+
+NPI_LOOKUP_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NPI Lookup - MediverifyAI</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            600: '#0284c7',
+                        },
+                        dark: {
+                            950: '#020617',
+                            900: '#0f172a',
+                            800: '#1e293b',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .glass {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+        }
+        .dark .glass {
+            background: rgba(15, 23, 42, 0.85);
+            border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 dark:bg-dark-950 dark:text-slate-200 min-h-screen">
+
+    <div id="toast-container" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-3"></div>
+
+""" + NAV_TEMPLATE + LOGIN_MODAL_TEMPLATE + """
+
+    <main class="pt-24 pb-12 px-6">
+        <div class="container mx-auto max-w-6xl">
+            <div class="text-center mb-10">
+                <h1 class="text-4xl lg:text-5xl font-bold text-slate-900 dark:text-white mb-4">NPI Registry Lookup</h1>
+                <p class="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
+                    Search the official National Provider Identifier (NPI) Registry for verified healthcare provider information.
+                </p>
+            </div>
+
+            <div class="bg-white dark:bg-dark-800 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 p-8 mb-10 max-w-3xl mx-auto">
+                <form id="npiLookupForm" onsubmit="performNPILookup(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">NPI Number</label>
+                        <input type="text" 
+                               id="npiInput" 
+                               pattern="\\d{10}" 
+                               maxlength="10"
+                               placeholder="1234567890" 
+                               required
+                               class="w-full px-4 py-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none transition-all text-slate-900 dark:text-white text-center text-xl font-mono">
+                    </div>
+
+                    <button type="submit" class="w-full bg-brand-600 text-white py-3 rounded-lg font-semibold hover:bg-brand-700 transition-colors shadow-lg">
+                        <i class="fa-solid fa-database mr-2"></i>
+                        Search NPPES Registry
+                    </button>
+                </form>
+            </div>
+
+            <div id="resultsContainer"></div>
+        </div>
+    </main>
+
+""" + FOOTER_TEMPLATE + """
+
+    <script>
+        async function performNPILookup(e) {
+            e.preventDefault();
+            const npiInput = document.getElementById('npiInput');
+            const npi = npiInput.value.trim();
+            
+            if (!/^\\d{10}$/.test(npi)) {
+                showToast('Please enter a valid 10-digit NPI number', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/npi-lookup', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ npi: npi })
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success' && data.valid) {
+                    showToast('NPI found in registry!', 'success');
+                    // Display results
+                    displayNPIDetails(data);
+                } else {
+                    showToast('NPI not found or invalid', 'error');
+                }
+            } catch (error) {
+                showToast('Network error: ' + error.message, 'error');
+            }
+        }
+        
+        function displayNPIDetails(data) {
+            const container = document.getElementById('resultsContainer');
+            container.innerHTML = `
+                <div class="bg-white dark:bg-dark-800 rounded-xl shadow-lg p-6">
+                    <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-4">NPI Results</h3>
+                    <div class="space-y-3">
+                        <div>
+                            <span class="text-slate-600 dark:text-slate-400">Provider:</span>
+                            <span class="font-semibold ml-2">${data.provider_name}</span>
+                        </div>
+                        <div>
+                            <span class="text-slate-600 dark:text-slate-400">Status:</span>
+                            <span class="font-semibold ml-2 ${data.valid ? 'text-green-600' : 'text-red-600'}">${data.valid ? 'Valid' : 'Invalid'}</span>
+                        </div>
+                        <div>
+                            <span class="text-slate-600 dark:text-slate-400">NPI:</span>
+                            <span class="font-mono font-semibold ml-2">${data.npi}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    </script>
+""" + SHARED_SCRIPTS + """
+</body>
+</html>
+"""
+
+# ==========================================
+# Routes
+# ==========================================
+
+@app.route('/')
+def home():
+    return render_template_string(HTML_TEMPLATE)
+
+@app.route('/search')
+def search():
+    """Search results page that displays AI validation"""
+    query = request.args.get('q', '')
+    state = request.args.get('state', 'CA')
+    return render_template_string(
+        SEARCH_RESULTS_TEMPLATE,
+        query=query,
+        state=state
+    )
+
+@app.route('/npi-lookup')
+def npi_lookup():
+    """Dedicated NPI Lookup page"""
+    return render_template_string(NPI_LOOKUP_TEMPLATE)
+
+@app.route('/api/validate', methods=['POST'])
+def validate_npi():
+    try:
+        req_data = request.get_json()
+        npi = req_data.get('npi', '').strip()
+        
+        if not npi:
+            return jsonify({'error': 'NPI is required'}), 400
+        
+        result = validate_npi_real(npi)
+        
+        if result['valid']:
+            return jsonify({
+                'status': 'success',
+                'valid': True,
+                'provider': result['provider']
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'valid': False,
+                'message': result.get('error', 'Validation failed')
+            }), 400
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': 'Internal server error'}), 500
+
+@app.route('/api/npi-lookup', methods=['POST'])
+def npi_lookup_api():
+    """API endpoint for dedicated NPI lookup"""
+    try:
+        data = request.get_json()
+        npi = data.get('npi', '').strip()
+        
+        if not npi:
+            return jsonify({'status': 'error', 'error': 'NPI is required'}), 400
+        
+        if not re.match(r'^\d{10}$', npi):
+            return jsonify({'status': 'error', 'error': 'Invalid NPI format. Must be 10 digits.'}), 400
+        
+        # Validate NPI using real NPPES API
+        result = validate_npi_real(npi)
+        
+        if result['valid']:
+            provider = result['provider']
+            basic = provider.get('basic', {})
+            
+            # Format provider name
+            if basic.get('first_name') and basic.get('last_name'):
+                name = f"{basic['first_name']} {basic['last_name']}"
+            elif basic.get('organization_name'):
+                name = basic['organization_name']
+            else:
+                name = 'Unknown Provider'
+            
+            return jsonify({
+                'status': 'success',
+                'valid': True,
+                'npi': npi,
+                'provider': provider,
+                'provider_name': name,
+                'summary': 'NPI validated successfully using NPPES Registry'
+            })
+        else:
+            return jsonify({
+                'status': 'success',  # Still success for API response
+                'valid': False,
+                'npi': npi,
+                'error': result.get('error', 'NPI not found')
+            })
+                
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/search', methods=['POST'])
+def search_api():
+    """API endpoint for search - uses REAL AI validation"""
+    try:
+        data = request.get_json()
+        query = data.get('query', '').strip()
+        state = data.get('state', 'CA')
+        
+        if not query:
+            return jsonify({'status': 'error', 'error': 'Search query is required'}), 400
+        
+        # Check if query is NPI (10 digits)
+        if re.match(r'^\d{10}$', query):
+            # Validate NPI directly using real NPPES API
+            result = validate_npi_real(query)
+            if result['valid']:
+                provider = result['provider']
+                basic = provider.get('basic', {})
+                name = f"{basic.get('first_name', '')} {basic.get('last_name', basic.get('organization_name', 'N/A'))}".strip()
+                
+                return jsonify({
+                    'status': 'success',
+                    'type': 'npi',
+                    'provider_name': name,
+                    'npi': query,
+                    'valid': True,
+                    'data': provider,
+                    'summary': 'NPI validated successfully using NPPES Registry',
+                    'ai_model_used': False
+                })
+            else:
+                return jsonify({
+                    'status': 'success',
+                    'type': 'npi',
+                    'provider_name': 'Unknown',
+                    'npi': query,
+                    'valid': False,
+                    'error': result.get('error', 'Invalid NPI'),
+                    'ai_model_used': False
+                })
+        else:
+            # Use REAL AI validation for name search
+            try:
+                result = validate_provider_with_ai(query, state)
+                
+                # Check if it's a mock result (AI failed)
+                if result.get('is_mock', False):
+                    return jsonify({
+                        'status': 'success',
+                        'type': 'name',
+                        'provider_name': query,
+                        'state': state,
+                        'valid': result.get('valid', True),
+                        'ai_result': result.get('result', ''),
+                        'report': result.get('report_content', ''),
+                        'summary': 'Mock AI validation (Real AI not configured or failed)',
+                        'mock_npi': result.get('mock_npi', ''),
+                        'specialty': result.get('specialty', ''),
+                        'location': result.get('location', ''),
+                        'has_issues': result.get('has_issues', False),
+                        'is_sanctioned': result.get('is_sanctioned', False),
+                        'ai_model_used': False,
+                        'is_mock': True,
+                        'report_path': result.get('report_path', ''),
+                        'validation_time': result.get('validation_time', '')
+                    })
+                else:
+                    # Real AI was used
+                    return jsonify({
+                        'status': 'success',
+                        'type': 'name',
+                        'provider_name': query,
+                        'state': state,
+                        'valid': result.get('valid', True),
+                        'ai_result': result.get('result', ''),
+                        'report': result.get('report_content', ''),
+                        'summary': 'Real AI validation completed using CrewAI multi-agent system',
+                        'mock_npi': result.get('mock_npi', ''),
+                        'specialty': result.get('specialty', ''),
+                        'location': result.get('location', ''),
+                        'has_issues': result.get('has_issues', False),
+                        'is_sanctioned': result.get('is_sanctioned', False),
+                        'ai_model_used': True,
+                        'is_mock': False,
+                        'report_path': result.get('report_path', ''),
+                        'validation_time': result.get('validation_time', '')
+                    })
+                    
+            except Exception as ai_error:
+                # If AI validation fails, fall back to mock
+                print(f"AI validation failed: {ai_error}")
+                result = mock_validate_provider(query, state)
+                return jsonify({
+                    'status': 'success',
+                    'type': 'name',
+                    'provider_name': query,
+                    'state': state,
+                    'valid': result.get('valid', True),
+                    'ai_result': result.get('result', ''),
+                    'report': result.get('report_content', ''),
+                    'summary': 'AI validation failed, using mock data',
+                    'mock_npi': result.get('mock_npi', ''),
+                    'specialty': result.get('specialty', ''),
+                    'location': result.get('location', ''),
+                    'has_issues': result.get('has_issues', False),
+                    'is_sanctioned': result.get('is_sanctioned', False),
+                    'ai_model_used': False,
+                    'is_mock': True,
+                    'report_path': result.get('report_path', ''),
+                    'validation_time': result.get('validation_time', '')
+                })
+                
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/validator', methods=['GET', 'POST'])
+def validator():
+    if request.method == 'POST':
+        if 'csv_file' not in request.files:
+            return render_template_string(VALIDATOR_TEMPLATE, error='No file uploaded'), 400
+        
+        file = request.files['csv_file']
+        if file.filename == '':
+            return render_template_string(VALIDATOR_TEMPLATE, error='No file selected'), 400
+        
+        if file and file.filename.endswith('.csv'):
+            # Read CSV
+            stream = io.StringIO(file.stream.read().decode('UTF-8'), newline=None)
+            csv_reader = csv.DictReader(stream)
+            
+            results = []
+            valid_count = 0
+            invalid_count = 0
+            
+            for row in csv_reader:
+                npi = row.get('NPI', '').strip()
+                if npi:
+                    result = validate_npi_real(npi)
+                    name = ''
+                    taxonomy = ''
+                    location = ''
+                    valid = result['valid']
+                    
+                    if valid:
+                        provider = result['provider']
+                        basic = provider.get('basic', {})
+                        name = f"{basic.get('first_name', '')} {basic.get('last_name', basic.get('organization_name', 'N/A'))}".strip() or 'N/A'
+                        taxonomies = provider.get('taxonomies', [])
+                        if taxonomies:
+                            taxonomy = taxonomies[0].get('desc', '') if taxonomies[0].get('primary', False) else taxonomies[0].get('desc', '')
+                        addresses = provider.get('addresses', [])
+                        if addresses:
+                            addr = addresses[0]
+                            location = f"{addr.get('city', '')}, {addr.get('state', '')}"
+                        valid_count += 1
+                    else:
+                        name = row.get('Name', 'N/A') if 'Name' in row else 'N/A'
+                        invalid_count += 1
+                    
+                    results.append({
+                        'npi': npi,
+                        'name': name,
+                        'valid': valid,
+                        'taxonomy': taxonomy,
+                        'location': location
+                    })
+            
+            # Store in session
+            session_id = str(random.randint(100000, 999999))
+            session['results'] = results
+            session['session_id'] = session_id
+            session['valid_count'] = valid_count
+            session['invalid_count'] = invalid_count
+            
+            return render_template_string(VALIDATOR_TEMPLATE, results=results, session_id=session_id, valid_count=valid_count, invalid_count=invalid_count)
+    
+    return render_template_string(VALIDATOR_TEMPLATE)
+
+@app.route('/download_report')
+def download_report():
+    session_id = request.args.get('session_id')
+    if not session_id or session_id != session.get('session_id'):
+        return 'Invalid session', 400
+    
+    results = session.get('results', [])
+    if not results:
+        return 'No results to download', 400
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Header
+    writer.writerow(['NPI', 'Provider Name', 'Status', 'Taxonomy', 'City, State'])
+    
+    # Data
+    for row in results:
+        writer.writerow([row['npi'], row['name'], 'Valid' if row['valid'] else 'Invalid', row['taxonomy'], row['location']])
+    
+    filename = f"validation_report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    
+    return send_file(
+        io.BytesIO(output.getvalue().encode('utf-8')),
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=filename
+    )
+
+@app.route('/api/ai-validate', methods=['POST'])
+def ai_validate_endpoint():
+    """Direct endpoint for AI validation"""
+    try:
+        data = request.get_json()
+        provider_name = data.get('provider_name', '').strip()
+        state = data.get('state', 'CA')
+        
+        if not provider_name:
+            return jsonify({'status': 'error', 'error': 'Provider name is required'}), 400
+        
+        result = validate_provider_with_ai(provider_name, state)
+        
+        if result['status'] == 'success':
+            return jsonify(result)
+        else:
+            return jsonify(result), 500
+            
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/view-report/<path:report_path>')
+def view_report(report_path):
+    """View a generated AI report"""
+    try:
+        safe_path = secure_filename(report_path)
+        report_file = Path('ai_reports') / safe_path
+        
+        if not report_file.exists():
+            return "Report not found", 404
+        
+        with open(report_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Simple HTML view
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>AI Validation Report</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+        </head>
+        <body class="bg-gray-100 p-8">
+            <div class="max-w-4xl mx-auto bg-white rounded-lg shadow-lg p-8">
+                <div class="mb-6">
+                    <h1 class="text-2xl font-bold text-gray-800">AI Validation Report</h1>
+                    <p class="text-gray-600">Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                </div>
+                <div class="prose max-w-none">
+                    <pre class="bg-gray-50 p-4 rounded-lg overflow-x-auto">{content}</pre>
+                </div>
+                <div class="mt-8">
+                    <a href="/search" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Back to Search</a>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        return html
+        
+    except Exception as e:
+        return f"Error loading report: {str(e)}", 500
+
+# Health check endpoint
+@app.route('/health')
+def health():
+    return jsonify({'status': 'healthy', 'timestamp': datetime.datetime.now().isoformat()})
+
+# ==========================================
+# Main Application Entry
+# ==========================================
+
+if __name__ == '__main__':
+    # Ensure reports directories exist
+    Path('reports').mkdir(exist_ok=True)
+    Path('ai_reports').mkdir(exist_ok=True)
+    
+    # Run the application
+    print("=" * 70)
+    print("MediverifyAI Web Application")
+    print("=" * 70)
+    print(f"Local URL: http://127.0.0.1:5000")
+    print(f"Search URL: http://127.0.0.1:5000/search")
+    print(f"NPI Lookup URL: http://127.0.0.1:5000/npi-lookup")
+    print(f"Validator URL: http://127.0.0.1:5000/validator")
+    print(f"Health Check: http://127.0.0.1:5000/health")
+    print("=" * 70)
+    print("AI INTEGRATION: Using CrewAI multi-agent system")
+    print("=" * 70)
+    
+    app.run(debug=True, port=5000)
